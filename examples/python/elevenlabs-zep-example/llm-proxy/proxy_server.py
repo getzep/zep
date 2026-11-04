@@ -22,7 +22,9 @@ To use with ElevenLabs:
 import os
 import json
 import logging
+import time
 import secrets
+from collections import OrderedDict
 import asyncio
 from typing import AsyncGenerator, Optional
 
@@ -61,6 +63,8 @@ DEFAULT_MODEL = "gpt-6-luna"
 
 # The Responses API fields that the proxy forwards from ElevenLabs to OpenAI
 FORWARDED_RESPONSES_FIELDS = (
+    "instructions",
+    "previous_response_id",
     "tools",
     "tool_choice",
     "parallel_tool_calls",
@@ -258,9 +262,23 @@ def latest_user_message(input_items) -> Optional[str]:
 # needs those reasoning items again when the next request continues the tool
 # loop. ElevenLabs keeps the conversation history, so the proxy keeps the
 # reasoning items of each function call in memory and adds them back when
-# ElevenLabs does not send them. A production application keeps this map in
+# ElevenLabs does not send them. The map keeps at most
+# REASONING_CACHE_MAX_CALLS calls, and each entry expires after
+# REASONING_CACHE_TTL_SECONDS. A production application keeps this map in
 # its own store.
-REASONING_ITEMS_BY_CALL_ID: dict = {}
+REASONING_CACHE_MAX_CALLS = 1000
+REASONING_CACHE_TTL_SECONDS = 3600
+REASONING_ITEMS_BY_CALL_ID: OrderedDict = OrderedDict()
+
+
+def prune_reasoning_items(now: float) -> None:
+    """Remove expired entries and the oldest entries above the size limit."""
+    while REASONING_ITEMS_BY_CALL_ID:
+        call_id, (stored_at, _) = next(iter(REASONING_ITEMS_BY_CALL_ID.items()))
+        expired = now - stored_at > REASONING_CACHE_TTL_SECONDS
+        if not expired and len(REASONING_ITEMS_BY_CALL_ID) <= REASONING_CACHE_MAX_CALLS:
+            break
+        del REASONING_ITEMS_BY_CALL_ID[call_id]
 
 
 def remember_reasoning_items(output_items: list) -> None:
@@ -268,9 +286,19 @@ def remember_reasoning_items(output_items: list) -> None:
     reasoning_items = [item for item in output_items if item.get("type") == "reasoning"]
     if not reasoning_items:
         return
+    now = time.monotonic()
     for item in output_items:
         if item.get("type") == "function_call" and item.get("call_id"):
-            REASONING_ITEMS_BY_CALL_ID[item["call_id"]] = reasoning_items
+            REASONING_ITEMS_BY_CALL_ID.pop(item["call_id"], None)
+            REASONING_ITEMS_BY_CALL_ID[item["call_id"]] = (now, reasoning_items)
+    prune_reasoning_items(now)
+
+
+def kept_reasoning_items(call_id) -> list:
+    """Get the reasoning items of a function call that did not expire."""
+    prune_reasoning_items(time.monotonic())
+    entry = REASONING_ITEMS_BY_CALL_ID.get(call_id)
+    return entry[1] if entry else []
 
 
 def restore_reasoning_items(input_items):
@@ -286,7 +314,7 @@ def restore_reasoning_items(input_items):
     for item in input_items:
         if isinstance(item, dict) and item.get("type") == "function_call":
             previous_type = restored[-1].get("type") if restored and isinstance(restored[-1], dict) else None
-            reasoning_items = REASONING_ITEMS_BY_CALL_ID.get(item.get("call_id"), [])
+            reasoning_items = kept_reasoning_items(item.get("call_id"))
             if previous_type not in ("reasoning", "function_call"):
                 for reasoning_item in reasoning_items:
                     if reasoning_item.get("id") not in present_ids:
@@ -303,6 +331,12 @@ def build_openai_request(body: dict, zep_context: Optional[str]) -> dict:
     API. The proxy always sets low reasoning and keeps a reasoning summary
     setting from ElevenLabs. The proxy does not forward sampling parameters
     such as temperature, because GPT-6 Luna does not accept them.
+
+    The proxy forwards the instructions and previous_response_id of the
+    caller without change. When Zep returns context, the proxy appends the
+    context to the instructions of the caller. OpenAI does not carry the
+    instructions of a previous response over to the next response, so each
+    request has its own instructions.
     """
     openai_request = {
         field: body[field] for field in FORWARDED_RESPONSES_FIELDS if field in body
@@ -311,8 +345,8 @@ def build_openai_request(body: dict, zep_context: Optional[str]) -> dict:
     openai_request["input"] = restore_reasoning_items(body.get("input", []))
     openai_request["reasoning"] = {**(body.get("reasoning") or {}), "effort": "low"}
     if zep_context:
-        instructions = body.get("instructions") or "You are a helpful assistant."
-        openai_request["instructions"] = instructions + zep_context_block(zep_context)
+        instructions = body.get("instructions") or ""
+        openai_request["instructions"] = (instructions + zep_context_block(zep_context)).lstrip()
     openai_request["stream"] = True
     return openai_request
 

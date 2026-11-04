@@ -162,9 +162,67 @@ def test_tool_loop_sends_the_reasoning_items_back(fake_openai):
     assert responses.requests[1]["reasoning"]["effort"] == "low"
 
 
+def test_instructions_and_previous_response_id_are_kept_without_zep_context(
+    fake_openai, monkeypatch
+):
+    async def no_context(user_uuid, conversation_id, user_message):
+        return None
+
+    monkeypatch.setattr(proxy_server, "add_message_and_get_context", no_context)
+    responses = fake_openai([[FakeEvent("response.completed", response=FakeResponse([]))]])
+    body = {
+        "instructions": "You are Eva.",
+        "previous_response_id": "resp_previous",
+        "input": [{"type": "function_call_output", "call_id": "call_1", "output": "ok"}],
+        "elevenlabs_extra_body": EXTRA_BODY,
+    }
+
+    response = TestClient(proxy_server.app).post("/v1/responses", json=body, headers=HEADERS)
+
+    assert response.status_code == 200
+    request = responses.requests[0]
+    assert request["instructions"] == "You are Eva."
+    assert request["previous_response_id"] == "resp_previous"
+    assert request["input"] == body["input"]
+    assert request["reasoning"] == {"effort": "low"}
+
+
+def test_zep_context_does_not_add_a_default_persona(fake_openai):
+    responses = fake_openai([[FakeEvent("response.completed", response=FakeResponse([]))]])
+    body = {"input": "Hi", "elevenlabs_extra_body": EXTRA_BODY}
+
+    TestClient(proxy_server.app).post("/v1/responses", json=body, headers=HEADERS)
+
+    instructions = responses.requests[0]["instructions"]
+    assert instructions.startswith("<zep_user_context>")
+    assert "The user likes hiking." in instructions
+
+
+def test_reasoning_map_is_bounded_and_expires(monkeypatch):
+    proxy_server.REASONING_ITEMS_BY_CALL_ID.clear()
+    monkeypatch.setattr(proxy_server, "REASONING_CACHE_MAX_CALLS", 2)
+    clock = [1000.0]
+    monkeypatch.setattr(proxy_server.time, "monotonic", lambda: clock[0])
+    reasoning = {"id": "rs_1", "type": "reasoning", "summary": []}
+
+    for call_id in ("call_1", "call_2", "call_3"):
+        proxy_server.remember_reasoning_items(
+            [reasoning, {"type": "function_call", "call_id": call_id}]
+        )
+
+    assert list(proxy_server.REASONING_ITEMS_BY_CALL_ID) == ["call_2", "call_3"]
+    assert proxy_server.kept_reasoning_items("call_3") == [reasoning]
+
+    clock[0] += proxy_server.REASONING_CACHE_TTL_SECONDS + 1
+    assert proxy_server.kept_reasoning_items("call_3") == []
+    assert not proxy_server.REASONING_ITEMS_BY_CALL_ID
+
+
 def test_reasoning_items_are_not_sent_twice(fake_openai):
     reasoning = {"id": "rs_1", "type": "reasoning", "summary": []}
-    proxy_server.REASONING_ITEMS_BY_CALL_ID["call_1"] = [reasoning]
+    proxy_server.remember_reasoning_items(
+        [reasoning, {"type": "function_call", "call_id": "call_1"}]
+    )
     call_item = {"type": "function_call", "call_id": "call_1", "name": "end_call", "arguments": "{}"}
 
     assert proxy_server.restore_reasoning_items([reasoning, call_item]) == [reasoning, call_item]
