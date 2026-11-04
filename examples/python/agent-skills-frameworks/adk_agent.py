@@ -56,7 +56,7 @@ def build_model(model_name: str) -> AnthropicLlm:
     return AnthropicLlm(
         model=model_name,
         max_tokens=32768,
-        client=AsyncAnthropic(),
+        client=AsyncAnthropic(timeout=540),
     )
 
 

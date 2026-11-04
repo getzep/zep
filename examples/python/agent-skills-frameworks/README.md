@@ -1,8 +1,8 @@
 # Agent Skills with LangGraph, Google ADK, and Claude Agent SDK
 
-This example shows how to use Zep Agent Skills with LangGraph. The banking data
-is invented. Read the [banking task](../agent-skills-banking/README.md) for its
-task description.
+This example shows how to use Zep Agent Skills with LangGraph, Google ADK, and
+Claude Agent SDK. The banking data is invented. Read the
+[banking task](../agent-skills-banking/README.md) for its task description.
 
 The example uses a shared banking tool layer. Each framework adapter uses the
 same tools and records the same Trace events.

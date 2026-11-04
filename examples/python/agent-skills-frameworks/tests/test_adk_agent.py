@@ -3,11 +3,13 @@ from typing import Any
 
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_response import LlmResponse
+from google.adk.tools.function_tool import FunctionTool
 from google.genai import types
 from pydantic import Field
 
 from adk_agent import build_config, run_episode
 from banking import make_case
+from tools import BankingTools
 
 
 class RecordingTrace:
@@ -103,3 +105,62 @@ def test_adk_callbacks_record_order_and_expose_tool_error() -> None:
     )
     assert "The document ID is not in list_documents." in recorder.events[2][1]
     assert recorder.events[2][2] == "read_document"
+
+
+def test_adk_compare_packages_schema_and_pydantic_conversion() -> None:
+    case = make_case(10134)
+    declaration = FunctionTool(func=BankingTools(case, []).compare_packages)._get_declaration()
+    assert declaration is not None
+    declaration_schema = declaration.model_dump(mode="json")["parameters_json_schema"]
+    packages_schema = declaration_schema["properties"]["packages"]
+    assert packages_schema["type"] == "array"
+    selection_schema = declaration_schema["$defs"]["PackageSelection"]
+    assert selection_schema["type"] == "object"
+
+    packages = [{"account_id": account.account_id} for account in case.savings]
+    model = ScriptedLlm(
+        model="scripted",
+        responses=[
+            LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[
+                        types.Part(
+                            function_call=types.FunctionCall(
+                                id="call-compare",
+                                name="compare_packages",
+                                args={"packages": packages},
+                            )
+                        )
+                    ],
+                )
+            ),
+            LlmResponse(
+                content=types.Content(
+                    role="model", parts=[types.Part(text="The packages are valid.")]
+                )
+            ),
+        ],
+    )
+    recorder = RecordingTrace()
+    result = asyncio.run(
+        run_episode(
+            case,
+            "claude-haiku-5-5",
+            "none",
+            [],
+            recorder,  # type: ignore[arg-type]
+            False,
+            test_model=model,
+        )
+    )
+
+    assert result.tools.calls[0]["name"] == "compare_packages"
+    assert result.tools.calls[0]["result"]["permitted"] is True
+    assert [event[0] for event in recorder.events] == [
+        "input_reference",
+        "tool_call",
+        "tool_result",
+        "decision",
+    ]
+    assert recorder.events[1][2] == "compare_packages"

@@ -173,3 +173,46 @@ def test_parallel_tool_calls_are_rejected_before_execution() -> None:
             )
         )
     assert len(model.responses) == 0
+
+
+def test_compare_packages_accepts_package_dicts() -> None:
+    case = make_case(10134)
+    packages = [{"account_id": account.account_id} for account in case.savings]
+    model = ScriptedChatModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "compare_packages",
+                        "args": {"packages": packages},
+                        "id": "call-compare",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="The packages are valid."),
+        ]
+    )
+    recorder = RecordingTrace()
+    result = asyncio.run(
+        run_episode(
+            case,
+            "anthropic:fake",
+            "none",
+            [],
+            recorder,  # type: ignore[arg-type]
+            False,
+            test_model=model,
+        )
+    )
+
+    assert result.tools.calls[0]["name"] == "compare_packages"
+    assert result.tools.calls[0]["result"]["permitted"] is True
+    assert [event[0] for event in recorder.events] == [
+        "input_reference",
+        "tool_call",
+        "tool_result",
+        "decision",
+    ]
+    assert recorder.events[1][2] == "compare_packages"
