@@ -246,7 +246,7 @@ own engine — uses for its LLM clients):
 from zep_ingest.llm.openai import OpenAILLM, OpenAICompatibleLLM
 from zep_ingest.llm.anthropic import AnthropicLLM
 
-OpenAILLM()  # OpenAI (pip install "zep-ingest[openai]")
+OpenAILLM()  # OpenAI gpt-6-luna, low reasoning (pip install "zep-ingest[openai]")
 AnthropicLLM()  # Anthropic (pip install "zep-ingest[anthropic]")
 # The universal connector — any OpenAI-compatible /chat/completions endpoint:
 OpenAICompatibleLLM(

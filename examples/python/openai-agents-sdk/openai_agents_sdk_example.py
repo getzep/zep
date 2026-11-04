@@ -12,7 +12,8 @@ import dotenv
 import click
 
 # OpenAI Agents SDK imports
-from agents import Agent, Runner, function_tool, set_default_openai_key
+from agents import Agent, ModelSettings, Runner, function_tool, set_default_openai_key
+from openai.types.shared import Reasoning
 
 # Zep Cloud imports
 from zep_cloud.client import AsyncZep
@@ -23,7 +24,7 @@ from zep_cloud import NotFoundError
 dotenv.load_dotenv()
 
 
-MODEL_NAME = "gpt-5-mini"
+MODEL_NAME = "gpt-6-luna"
 SYSTEM_PROMPT = """
 You are a helpful assistant with memory capabilities. Use the memory search tool to recall important information about the user. 
 
@@ -299,6 +300,9 @@ class AsyncZepMemoryAgent:
         self.agent = Agent(
             name="Memory Assistant with AsyncZep",
             model=MODEL_NAME,
+            # The Agents SDK calls the Responses API by default. GPT-6 Luna
+            # supports function tools with low reasoning on that API.
+            model_settings=ModelSettings(reasoning=Reasoning(effort="low")),
             instructions=(SYSTEM_PROMPT + "\n" + f"Memory Context: {memory_context}"),
             tools=[
                 get_weather,

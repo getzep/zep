@@ -19,11 +19,12 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/openai/openai-go/v3"
 	openaioption "github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 const (
 	zepMaxEpisodeSize = 10000
-	openAIModel       = "gpt-5-mini"
+	openAIModel       = "gpt-6-luna"
 	maxRetries        = 3
 
 	defaultChunkSize    = 6000
@@ -211,6 +212,7 @@ Please give a short succinct context to situate this chunk within the overall do
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(prompt),
 			},
+			ReasoningEffort:     shared.ReasoningEffortLow,
 			MaxCompletionTokens: openai.Int(256),
 		})
 		if err != nil {

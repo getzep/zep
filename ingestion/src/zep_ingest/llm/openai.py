@@ -30,19 +30,25 @@ class OpenAILLM:
         self,
         client: Any | None = None,
         *,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-6-luna",
         max_tokens: int = 200,
+        reasoning_effort: str | None = "low",
     ) -> None:
         require_int_range("max_tokens", max_tokens, minimum=1)
         self.client = client if client is not None else _make_openai_client()
         self.model = model
         self.max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
 
     def complete(self, prompt: str) -> str:
+        options: dict[str, Any] = {}
+        if self.reasoning_effort is not None:
+            options["reasoning_effort"] = self.reasoning_effort
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             max_completion_tokens=self.max_tokens,
+            **options,
         )
         return (response.choices[0].message.content or "").strip()
 
@@ -50,6 +56,8 @@ class OpenAILLM:
 class OpenAICompatibleLLM(OpenAILLM):
     """Any OpenAI-compatible endpoint. ``model`` and (unless a client is
     passed) ``base_url`` are provider-specific, so both are required.
+    ``reasoning_effort`` is not sent unless you set it, because many
+    compatible endpoints do not accept it.
 
     Examples:
         OpenAICompatibleLLM(model="claude-haiku-4-5", base_url="http://localhost:4000", api_key="...")   # LiteLLM proxy
@@ -64,6 +72,7 @@ class OpenAICompatibleLLM(OpenAILLM):
         api_key: str | None = None,
         client: Any | None = None,
         max_tokens: int = 200,
+        reasoning_effort: str | None = None,
     ) -> None:
         require_int_range("max_tokens", max_tokens, minimum=1)
         if client is None:
@@ -72,4 +81,6 @@ class OpenAICompatibleLLM(OpenAILLM):
                     "base_url is required when OpenAICompatibleLLM constructs its client"
                 )
             client = _make_openai_client(base_url=base_url, api_key=api_key)
-        super().__init__(client, model=model, max_tokens=max_tokens)
+        super().__init__(
+            client, model=model, max_tokens=max_tokens, reasoning_effort=reasoning_effort
+        )
