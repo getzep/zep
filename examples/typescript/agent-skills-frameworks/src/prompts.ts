@@ -10,6 +10,15 @@ export const SYSTEM = (
   "The Skill catalog is: {catalog}"
 );
 
+export function skillCatalog(skills: Record<string, unknown>[]) {
+  return skills.map((skill) => ({
+    uuid: skill.uuid,
+    name: skill.name ?? "",
+    description: skill.description ?? "",
+    version: skill.version,
+  }));
+}
+
 export const USER = (
   "Please investigate the savings interest for statement month {month} on all my " +
   "savings accounts. Correct each underpayment and save the discrepancy reports. " +

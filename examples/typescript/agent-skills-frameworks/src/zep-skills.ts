@@ -92,14 +92,15 @@ export class ZepSkills {
   }
 
   async recordSkillUse(agent: string, skillUuid: string, searchId: string, traceUuid: string, used: boolean, passed: boolean) {
+    const usage = used ? "used" : "ignored";
     const use = await this.client.agent.skill.use.create(agent, skillUuid, {
-      searchId, traceUuid, usage: used ? "used" : "ignored",
+      searchId, traceUuid, usage,
     }, { idempotencyKey: randomUUID() });
     if (!use.uuid) throw new Error("Zep did not return a Skill use UUID.");
     const outcome = await this.client.agent.skill.use.addOutcome(agent, skillUuid, use.uuid, {
       outcome: passed ? "succeeded" : "failed",
     }, { idempotencyKey: randomUUID() });
-    return { uuid: use.uuid, outcome };
+    return { uuid: use.uuid, usage, outcome };
   }
 }
 

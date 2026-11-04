@@ -24,7 +24,7 @@ npm run run -- run --framework mastra --output runs/mastra-demo
 
 ## OpenAI Codex SDK
 
-Codex uses a local stdio MCP server for the nine banking tools. The adapter records `runStreamed` events and sets the system prompt as developer instructions. It selects a custom provider that uses the Responses API over HTTP and disables WebSockets. The provider uses `OPENAI_BASE_URL` when it is set. It runs in a temporary read-only directory, disables network and web search, and turns off the installed shell, code-mode, browser, computer-use, image, and app tools. The installed Codex model catalog describes `gpt-6-astra` as its frontier model and `gpt-6-luna` as fast and affordable. The teacher uses `gpt-6-astra` at `ultra`, the highest effort that the installed SDK supports. The student uses `gpt-6-luna` at low effort.
+Codex uses a local stdio MCP server for the nine banking tools. The adapter records `runStreamed` events and sets the system prompt as developer instructions. Developer instructions list only each Skill's UUID, name, description, and version. The student calls `read_skill` to get the Skill Markdown. It selects a custom provider that uses the Responses API over HTTP and disables WebSockets. The provider uses `OPENAI_BASE_URL` when it is set. It runs in a temporary read-only directory, disables network and web search, and turns off the installed shell, code-mode, browser, computer-use, image, and app tools. The installed Codex model catalog describes `gpt-6-astra` as its frontier model and `gpt-6-luna` as fast and affordable. The teacher uses `gpt-6-astra` at `ultra`, the highest effort that the installed SDK supports. The student uses `gpt-6-luna` at low effort.
 
 ```bash
 npm run run -- run --framework codex --output runs/codex-demo

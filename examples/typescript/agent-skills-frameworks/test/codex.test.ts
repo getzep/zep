@@ -3,8 +3,23 @@ import type { ThreadEvent } from "@openai/codex-sdk";
 import {
   createCodexBankingMcpConfig,
   createCodexProviderConfig,
+  codexDeveloperInstructions,
   mapCodexEvent,
 } from "../agent/codex.js";
+
+describe("Codex developer instructions", () => {
+  it("lists Skill metadata without including the Skill Markdown", () => {
+    const instructions = codexDeveloperInstructions([
+      { uuid: "s1", name: "N", description: "D", version: 1, markdown: "SECRET PROCEDURE" },
+    ]);
+
+    expect(instructions).toContain('"uuid":"s1"');
+    expect(instructions).toContain('"name":"N"');
+    expect(instructions).toContain('"version":1');
+    expect(instructions).not.toContain("SECRET PROCEDURE");
+    expect(instructions).not.toContain("markdown");
+  });
+});
 
 describe("Codex event mapping", () => {
   it("records bare MCP tool names, errors, decisions, and token totals", () => {
