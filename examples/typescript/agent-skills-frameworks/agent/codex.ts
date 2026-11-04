@@ -31,6 +31,13 @@ export function createCodexProviderConfig(baseUrl = process.env.OPENAI_BASE_URL 
   };
 }
 
+export function createCodexBankingMcpConfig() {
+  return {
+    default_tools_approval_mode: "approve",
+    enabled_tools: Object.keys(toolSchemas),
+  };
+}
+
 export function mapCodexEvent(event: ThreadEvent): CodexMapping | null {
   if (event.type === "turn.failed") return { kind: "failure", message: event.error.message };
   if (event.type === "error") return { kind: "failure", message: event.message };
@@ -48,6 +55,7 @@ export function mapCodexEvent(event: ThreadEvent): CodexMapping | null {
   }
   if (item.type !== "mcp_tool_call") return null;
   const toolName = item.tool.replace(/^.*__/, "");
+  if (toolName === "list_mcp_resources" || toolName === "list_mcp_resource_templates") return null;
   if (event.type === "item.started") {
     return { kind: "trace", eventType: "tool_call", content: JSON.stringify(item.arguments), toolName, toolCallId: item.id };
   }
@@ -86,6 +94,7 @@ export async function runEpisode(
       developer_instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)),
       mcp_servers: {
         banking: {
+          ...createCodexBankingMcpConfig(),
           command: process.execPath,
           args: ["--import", "tsx", serverPath],
           cwd: packageDir,
@@ -95,6 +104,7 @@ export async function runEpisode(
       features: {
         shell_tool: false,
         code_mode: false,
+        // The banking MCP server needs this host; code-mode tools remain disabled.
         code_mode_host: true,
         code_mode_interrupt: false,
         code_mode_only: false,

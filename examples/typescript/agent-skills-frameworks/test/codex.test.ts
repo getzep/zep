@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@openai/codex-sdk";
-import { createCodexProviderConfig, mapCodexEvent } from "../agent/codex.js";
+import {
+  createCodexBankingMcpConfig,
+  createCodexProviderConfig,
+  mapCodexEvent,
+} from "../agent/codex.js";
 
 describe("Codex event mapping", () => {
   it("records bare MCP tool names, errors, decisions, and token totals", () => {
@@ -29,11 +33,37 @@ describe("Codex event mapping", () => {
     } as ThreadEvent)).toEqual({ kind: "tokens", tokens: 14 });
   });
 
-  it("fails the episode when a built-in command tool runs", () => {
-    expect(mapCodexEvent({
-      type: "item.completed",
-      item: { type: "command_execution", id: "cmd", command: "echo unsafe", aggregated_output: "", status: "completed" },
-    } as ThreadEvent)).toMatchObject({ kind: "failure", message: expect.stringContaining("command_execution") });
+  it("fails the episode when a command, file, or web tool runs", () => {
+    const forbiddenEvents: [ThreadEvent, string][] = [
+      [{
+        type: "item.completed",
+        item: { type: "command_execution", id: "cmd", command: "echo unsafe", aggregated_output: "", status: "completed" },
+      } as ThreadEvent, "command_execution"],
+      [{
+        type: "item.completed",
+        item: { type: "file_change", id: "file", changes: [{ path: "agent.ts", kind: "update" }], status: "completed" },
+      } as ThreadEvent, "file_change"],
+      [{
+        type: "item.completed",
+        item: { type: "web_search", id: "search", query: "banking policies" },
+      } as ThreadEvent, "web_search"],
+    ];
+
+    for (const [event, type] of forbiddenEvents) {
+      expect(mapCodexEvent(event)).toEqual({
+        kind: "failure",
+        message: `Codex emitted forbidden ${type} activity.`,
+      });
+    }
+  });
+
+  it("ignores Codex MCP resource-discovery events", () => {
+    for (const tool of ["list_mcp_resources", "list_mcp_resource_templates"]) {
+      expect(mapCodexEvent({
+        type: "item.started",
+        item: { type: "mcp_tool_call", id: `resource-${tool}`, server: "banking", tool: `mcp__banking__${tool}`, arguments: {}, status: "in_progress" },
+      } as ThreadEvent)).toBeNull();
+    }
   });
 });
 
@@ -50,6 +80,23 @@ describe("Codex provider configuration", () => {
           supports_websockets: false,
         },
       },
+    });
+  });
+
+  it("pre-approves only the nine banking MCP tools", () => {
+    expect(createCodexBankingMcpConfig()).toEqual({
+      default_tools_approval_mode: "approve",
+      enabled_tools: [
+        "get_case",
+        "list_documents",
+        "read_document",
+        "calculator",
+        "quote_interest",
+        "compare_packages",
+        "credit_interest",
+        "file_discrepancy_report",
+        "read_skill",
+      ],
     });
   });
 });
