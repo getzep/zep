@@ -38,7 +38,7 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 ZEP_BASE_URL = os.environ.get("ZEP_BASE_URL", "https://api.getzep.com/api/v4")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
@@ -50,6 +50,7 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent  # noqa: E402
 from zep_cloud.client import AsyncZep, Zep  # noqa: E402
 
+from examples.responses_client import OpenAIResponsesModelClient  # noqa: E402
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools  # noqa: E402
 
 FIRST_NAME = "IntegTest"
@@ -127,7 +128,14 @@ def build_agent(
     sync_zep: Zep, graph_uuid: str, thread_uuid: str
 ) -> tuple[AssistantAgent, UserProxyAgent]:
     """Build an AG2 assistant/user pair wired to Zep memory on the given thread."""
-    llm_config = LLMConfig({"model": OPENAI_MODEL, "api_key": OPENAI_API_KEY})
+    llm_config = LLMConfig(
+        {
+            "model": OPENAI_MODEL,
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": OPENAI_API_KEY,
+        }
+    )
     assistant = AssistantAgent(
         name="assistant",
         llm_config=llm_config,
@@ -143,6 +151,7 @@ def build_agent(
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
     register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
+    assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
     return assistant, user_proxy
 
 

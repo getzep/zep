@@ -16,6 +16,7 @@ Prerequisites:
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
+from responses_client import OpenAIResponsesModelClient
 from zep_cloud.client import Zep
 
 from zep_ag2 import create_search_memory_tool
@@ -26,7 +27,14 @@ def main() -> None:
     zep = Zep(api_key=os.environ["ZEP_API_KEY"])
     graph_uuid = zep.user.get(os.environ["ZEP_USER_UUID"]).graph_uuid or ""
 
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig(
+        {
+            "model": "gpt-6-luna",
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": os.environ["OPENAI_API_KEY"],
+        }
+    )
 
     assistant = AssistantAgent(
         name="researcher",
@@ -44,6 +52,7 @@ def main() -> None:
     search_fn = create_search_memory_tool(zep, graph_uuid)
     assistant.register_for_llm(description="Search memory for relevant information")(search_fn)
     user_proxy.register_for_execution()(search_fn)
+    assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     try:
         result = user_proxy.initiate_chat(

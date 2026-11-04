@@ -34,7 +34,7 @@ cd zep/integrations/crewai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=4.0.0,<5`.
+Requirements: Python 3.11+, `crewai>=1.15.7`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 
@@ -47,9 +47,12 @@ export OPENAI_API_KEY="your-openai-api-key"
 # The examples and the live test pass this value to the client as base_url.
 export ZEP_API_URL="https://api.development.getzep.com"
 
-# Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
-export OPENAI_MODEL="gpt-4o-mini"
+# Optional: override the OpenAI model used by the live test (default: gpt-6-luna)
+export OPENAI_MODEL="gpt-6-luna"
 ```
+
+Tool calls use the Responses API with low reasoning. The examples set
+`store=False` and include encrypted reasoning for stateless requests.
 
 To call a non-default Zep API, pass the base URL when you create the client.
 The `base_url` value must end in `/api/v4`:

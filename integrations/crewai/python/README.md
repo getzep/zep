@@ -50,7 +50,7 @@ at run time.
 import os
 from zep_cloud.client import Zep
 from zep_crewai import ZepUserStorage, create_search_tool
-from crewai import Agent, Crew, Task
+from crewai import Agent, Crew, LLM, Task
 
 # Initialize Zep client
 zep_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
@@ -119,9 +119,18 @@ agent = Agent(
     role="Knowledge Assistant",
     goal="Manage and retrieve information efficiently",
     tools=[search_tool, add_tool],
-    llm="gpt-5-mini",
+    llm=LLM(
+        model="gpt-6-luna",
+        api="responses",
+        reasoning_effort="low",
+        store=False,
+        include=["reasoning.encrypted_content"],
+    ),
 )
 ```
+
+Tool calls use the Responses API with low reasoning. The examples set
+`store=False` and include encrypted reasoning for stateless requests.
 
 ## Features
 
@@ -527,7 +536,7 @@ mypy src/zep_crewai
 
 - Python 3.11+
 - `zep-cloud>=4.0.0,<5`
-- `crewai>=1.0.0`
+- `crewai>=1.15.7`
 - `pydantic>=2.0.0`
 
 ## Best Practices

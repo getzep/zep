@@ -9,7 +9,7 @@ import os
 import sys
 import time
 
-from crewai import Agent, Crew, Process, Task
+from crewai import LLM, Agent, Crew, Process, Task
 from zep_cloud import SearchFilters
 from zep_cloud.client import Zep
 from zep_cloud.types import EntityProperty, EntityType
@@ -166,7 +166,13 @@ def main():
         search tool to query the knowledge graph for technology and company facts.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-5-mini",
+        llm=LLM(
+            model="gpt-6-luna",
+            api="responses",
+            reasoning_effort="low",
+            store=False,
+            include=["reasoning.encrypted_content"],
+        ),
     )
 
     recruiter = Agent(
@@ -178,7 +184,13 @@ def main():
         to query the knowledge graph.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-5-mini",
+        llm=LLM(
+            model="gpt-6-luna",
+            api="responses",
+            reasoning_effort="low",
+            store=False,
+            include=["reasoning.encrypted_content"],
+        ),
     )
 
     # Create tasks that leverage the graph knowledge
