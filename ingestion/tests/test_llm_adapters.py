@@ -16,11 +16,26 @@ class TestOpenAIAdapter:
         client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="  the context  "))]
         )
-        llm = OpenAILLM(client=client, model="gpt-5-mini")
+        llm = OpenAILLM(client=client)
         assert llm.complete("prompt text") == "the context"
+        client.responses.create.assert_not_called()
         kwargs = client.chat.completions.create.call_args.kwargs
-        assert kwargs["model"] == "gpt-5-mini"
+        assert kwargs["model"] == "gpt-6-luna"
+        assert kwargs["reasoning_effort"] == "low"
+        assert kwargs["max_completion_tokens"] == 200
         assert kwargs["messages"] == [{"role": "user", "content": "prompt text"}]
+
+    def test_reasoning_effort_can_be_changed_or_omitted(self):
+        from zep_ingest.llm.openai import OpenAILLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ctx"))]
+        )
+        OpenAILLM(client=client, reasoning_effort="medium").complete("p")
+        assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "medium"
+        OpenAILLM(client=client, reasoning_effort=None).complete("p")
+        assert "reasoning_effort" not in client.chat.completions.create.call_args.kwargs
 
     def test_missing_sdk_raises_dependency_error(self, monkeypatch):
         from zep_ingest.llm.openai import OpenAILLM
@@ -28,6 +43,18 @@ class TestOpenAIAdapter:
         monkeypatch.setitem(__import__("sys").modules, "openai", None)
         with pytest.raises(ZepDependencyError, match="zep-ingest\\[openai\\]"):
             OpenAILLM()
+
+    def test_model_override_does_not_add_reasoning_effort(self):
+        from zep_ingest.llm.openai import OpenAILLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ctx"))]
+        )
+        OpenAILLM(client=client, model="custom-model").complete("p")
+        assert "reasoning_effort" not in client.chat.completions.create.call_args.kwargs
+        OpenAILLM(client=client, model="custom-model", reasoning_effort="low").complete("p")
+        assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "low"
 
 
 class TestAnthropicAdapter:
@@ -104,7 +131,19 @@ class TestOpenAICompatibleAdapter:
         )
         llm = OpenAICompatibleLLM(model="my-model", client=client)
         assert llm.complete("prompt") == "ctx"
-        assert client.chat.completions.create.call_args.kwargs["model"] == "my-model"
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["model"] == "my-model"
+        assert "reasoning_effort" not in kwargs
+
+    def test_reasoning_effort_is_sent_only_when_set(self):
+        from zep_ingest.llm.openai import OpenAICompatibleLLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ctx"))]
+        )
+        OpenAICompatibleLLM(model="my-model", client=client, reasoning_effort="low").complete("p")
+        assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "low"
 
     def test_missing_sdk_raises_dependency_error(self, monkeypatch):
         import sys

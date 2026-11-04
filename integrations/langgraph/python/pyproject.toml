@@ -5,7 +5,7 @@ description = "LangGraph integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain-core>=1.0",
+    "langchain-core>=1.4.7",
     "langgraph>=1.2.5",
     "zep-cloud>=4.0.0,<5",
 ]

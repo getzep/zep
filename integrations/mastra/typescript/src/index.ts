@@ -41,7 +41,10 @@
  *   id: "memory-agent",
  *   name: "Memory Agent",
  *   instructions: "You have long-term memory about the user.",
- *   model: "openai/gpt-5-mini",
+ *   model: "openai/gpt-6-luna",
+ *   defaultOptions: {
+ *     providerOptions: { openai: { reasoningEffort: "low", forceReasoning: true } },
+ *   },
  *   inputProcessors: [inputProcessor],
  *   outputProcessors: [outputProcessor],
  * });

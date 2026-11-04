@@ -42,8 +42,8 @@ Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud>=4.0.0,<5`
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
-# Optional: override the OpenAI model used by the example (default: gpt-4o-mini)
-export OPENAI_MODEL="gpt-4o-mini"
+# Optional: override the OpenAI model used by the example (default: gpt-6-luna)
+export OPENAI_MODEL="gpt-6-luna"
 ```
 
 ## 5. Run the example

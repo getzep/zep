@@ -53,8 +53,8 @@ export OPENAI_API_KEY="your-openai-api-key"
 # default.
 export ZEP_API_URL="https://api.getzep.com"
 
-# Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
-export OPENAI_MODEL="gpt-4o-mini"
+# Optional: override the OpenAI model used by the live test (default: gpt-6-luna)
+export OPENAI_MODEL="gpt-6-luna"
 ```
 
 The SDK does not read `ZEP_API_URL` itself. The examples and the live test
@@ -82,6 +82,10 @@ Other runnable examples live in [`examples/`](examples):
 - `autogen_graph.py` — knowledge-graph memory with a custom ontology
 - `autogen_tools_search.py` — read-only graph search tool
 - `autogen_tools_full.py` — search + add graph data tools
+
+Tool calls use the Responses API with low reasoning. The
+`examples/responses_client.py` file contains a client for tool calls. Copy this
+file into your project and import `OpenAIResponsesChatCompletionClient`.
 
 ## 6. Run the tests
 

@@ -89,6 +89,7 @@ agent = AssistantAgent(name="Assistant", model_client=model_client, memory=[memo
 The integration provides pre-built AutoGen tools that agents can use autonomously:
 
 ```python
+from responses_client import OpenAIResponsesChatCompletionClient
 from zep_autogen import create_search_graph_tool, create_add_graph_data_tool
 
 # Create tools bound to specific resources
@@ -98,12 +99,18 @@ add_tool = create_add_graph_data_tool(zep_client, user_uuid=user_uuid)
 # Create agent with tools and reflection
 agent = AssistantAgent(
     name="KnowledgeAssistant",
-    model_client=OpenAIChatCompletionClient(model="gpt-4o-mini"),
+    model_client=OpenAIResponsesChatCompletionClient(
+        model="gpt-6-luna", reasoning_effort="low"
+    ),
     tools=[search_tool, add_tool],
     system_message="You can search and add information to knowledge bases.",
     reflect_on_tool_use=True,  # Critical for natural language responses
 )
 ```
+
+Tool calls use the Responses API with low reasoning. Copy
+`examples/responses_client.py` into your project to use the
+`OpenAIResponsesChatCompletionClient`.
 
 ### Key AutoGen Tool Patterns
 

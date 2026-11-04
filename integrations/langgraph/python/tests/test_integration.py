@@ -41,7 +41,7 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -156,7 +156,11 @@ def build_agent(
         return [system, *state["messages"]]
 
     search_tool = create_graph_search_tool(zep, graph_uuid=graph_uuid, scope="edges")
-    model = ChatOpenAI(model=OPENAI_MODEL)
+    model = ChatOpenAI(
+        model=OPENAI_MODEL,
+        use_responses_api=True,
+        reasoning={"effort": "low"},
+    )
     agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
 
     async def chat(user_text: str) -> str:
@@ -167,7 +171,7 @@ def build_agent(
         )
         result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
         reply = result["messages"][-1]
-        reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
+        reply_text = reply.text
         await persist_messages(
             zep, thread_uuid=thread_uuid, messages=[AIMessage(content=reply_text)]
         )

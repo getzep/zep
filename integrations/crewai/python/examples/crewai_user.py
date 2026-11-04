@@ -10,6 +10,7 @@ import sys
 import time
 
 from crewai import Agent, Crew, Process, Task
+from responses_llm import ReasoningReplayOpenAICompletion
 from zep_cloud.client import Zep
 
 from zep_crewai import ZepUserStorage, create_search_tool
@@ -152,7 +153,7 @@ def main():
         Use the Zep memory search tool to recall Alice's history and preferences.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-5-mini",
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     resource_planner = Agent(
@@ -164,7 +165,7 @@ def main():
         team's composition and current projects.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-5-mini",
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     # Create tasks that leverage user-specific memory

@@ -26,7 +26,7 @@ load_dotenv()
 DEFAULT_CHUNK_SIZE = 6000  # Characters per chunk
 DEFAULT_CHUNK_OVERLAP = 200  # Overlap between chunks for continuity
 ZEP_MAX_EPISODE_SIZE = 10000  # Zep's maximum episode size
-OPENAI_MODEL = "gpt-5-mini"
+OPENAI_MODEL = "gpt-6-luna"
 
 
 def split_into_sentences(text: str) -> list[str]:
@@ -121,6 +121,7 @@ in your context. Answer only with the succinct context and nothing else."""
             response = openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
+                reasoning_effort="low",
                 max_completion_tokens=256,
             )
             context = response.choices[0].message.content.strip()

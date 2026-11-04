@@ -6,34 +6,35 @@ On every request, it:
 1. Validates the request has a valid API key (PROXY_API_KEY)
 2. Extracts the user UUID and the conversation ID from the request
 3. Fetches relevant context from Zep (user facts + thread history)
-4. Injects that context into the system prompt
+4. Injects that context into the instructions
 5. Persists the user message to Zep for memory extraction
-6. Forwards to OpenAI and streams the response back
+6. Forwards to the OpenAI Responses API with low reasoning and streams the response back
 7. Persists the assistant response to Zep
 
 To use with ElevenLabs:
 1. Set PROXY_API_KEY in your .env file (generate a random string)
 2. Run this server (it will be available at http://localhost:8080)
 3. Use ngrok or similar to expose it publicly
-4. In ElevenLabs agent settings, set Custom LLM URL to your ngrok URL
+4. In ElevenLabs agent settings, set Custom LLM URL to your ngrok URL + /v1/responses
 5. In ElevenLabs, set the API key header to match your PROXY_API_KEY
 """
 
-import os
+import asyncio
 import json
 import logging
-import time
+import os
 import secrets
-import asyncio
+import time
+from collections import OrderedDict
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
-from zep_cloud.client import AsyncZep
 from zep_cloud import AddMessage
+from zep_cloud.client import AsyncZep
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +57,19 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
 app = FastAPI(title="ElevenLabs-Zep Proxy")
+
+# The model that the proxy uses when ElevenLabs does not send a Model ID
+DEFAULT_MODEL = "gpt-6-luna"
+
+# The Responses API fields that the proxy forwards from ElevenLabs to OpenAI
+FORWARDED_RESPONSES_FIELDS = (
+    "instructions",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+    "max_output_tokens",
+    "text",
+)
 
 # Add CORS middleware to allow the React frontend to call the warm-user-cache endpoint
 app.add_middleware(
@@ -207,17 +221,9 @@ async def persist_message_to_zep(
         pass
 
 
-def inject_context_into_messages(messages: list, zep_context: str) -> list:
-    """
-    Inject Zep context into the system prompt.
-
-    If there's an existing system message, append the context.
-    If not, create a new system message with the context.
-    """
-    if not zep_context:
-        return messages
-
-    context_block = f"""
+def zep_context_block(zep_context: str) -> str:
+    """Format the Zep context for the instructions of the model."""
+    return f"""
 
 <zep_user_context>
 The following context about this user was retrieved from your memory system (Zep).
@@ -227,77 +233,162 @@ Use this information to personalize your responses and maintain continuity acros
 </zep_user_context>
 """
 
-    # Make a copy to avoid modifying the original
-    modified_messages = messages.copy()
 
-    if modified_messages and modified_messages[0].get("role") == "system":
-        # Append to existing system message
-        modified_messages[0] = {
-            **modified_messages[0],
-            "content": modified_messages[0]["content"] + context_block
-        }
-    else:
-        # Insert a new system message at the beginning
-        modified_messages.insert(0, {
-            "role": "system",
-            "content": f"You are a helpful assistant.{context_block}"
-        })
+def message_text(content) -> str:
+    """Get the text of a Responses API message content value."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") in ("input_text", "output_text", "text")
+        )
+    return ""
 
-    return modified_messages
+
+def new_user_turn(input_items) -> Optional[str]:
+    """Get a user turn only when it is the final input item.
+
+    A tool continuation repeats earlier turns. Those turns are already in
+    Zep and must not be added again.
+    """
+    if isinstance(input_items, str):
+        return input_items or None
+    if input_items:
+        item = input_items[-1]
+        if isinstance(item, dict) and item.get("role") == "user":
+            return message_text(item.get("content")) or None
+    return None
+
+
+# The Responses API returns reasoning items before function calls. The model
+# needs those reasoning items again when the next request continues the tool
+# loop. ElevenLabs keeps the conversation history, so the proxy keeps the
+# reasoning items of each function call in memory and adds them back when
+# ElevenLabs does not send them. The map keeps at most
+# REASONING_CACHE_MAX_CALLS calls, and each entry expires after
+# REASONING_CACHE_TTL_SECONDS. A production application keeps this map in
+# its own store.
+REASONING_CACHE_MAX_CALLS = 1000
+REASONING_CACHE_TTL_SECONDS = 3600
+REASONING_ITEMS_BY_CALL_ID: OrderedDict = OrderedDict()
+
+
+def prune_reasoning_items(now: float) -> None:
+    """Remove expired entries and the oldest entries above the size limit."""
+    while REASONING_ITEMS_BY_CALL_ID:
+        call_id, (stored_at, _) = next(iter(REASONING_ITEMS_BY_CALL_ID.items()))
+        expired = now - stored_at > REASONING_CACHE_TTL_SECONDS
+        if not expired and len(REASONING_ITEMS_BY_CALL_ID) <= REASONING_CACHE_MAX_CALLS:
+            break
+        del REASONING_ITEMS_BY_CALL_ID[call_id]
+
+
+def remember_reasoning_items(output_items: list) -> None:
+    """Keep the reasoning items of a response that requests function calls."""
+    reasoning_items = [item for item in output_items if item.get("type") == "reasoning"]
+    if not reasoning_items:
+        return
+    now = time.monotonic()
+    for item in output_items:
+        if item.get("type") == "function_call" and item.get("call_id"):
+            REASONING_ITEMS_BY_CALL_ID.pop(item["call_id"], None)
+            REASONING_ITEMS_BY_CALL_ID[item["call_id"]] = (now, reasoning_items)
+    prune_reasoning_items(now)
+
+
+def kept_reasoning_items(call_id) -> list:
+    """Get the reasoning items of a function call that did not expire."""
+    prune_reasoning_items(time.monotonic())
+    entry = REASONING_ITEMS_BY_CALL_ID.get(call_id)
+    return entry[1] if entry else []
+
+
+def restore_reasoning_items(input_items):
+    """Put the kept reasoning items before the function calls that need them."""
+    if not isinstance(input_items, list):
+        return input_items
+    present_ids = {
+        item.get("id")
+        for item in input_items
+        if isinstance(item, dict) and item.get("type") == "reasoning"
+    }
+    restored = []
+    for item in input_items:
+        if isinstance(item, dict) and item.get("type") == "function_call":
+            previous_type = restored[-1].get("type") if restored and isinstance(restored[-1], dict) else None
+            reasoning_items = kept_reasoning_items(item.get("call_id"))
+            if previous_type not in ("reasoning", "function_call"):
+                for reasoning_item in reasoning_items:
+                    if reasoning_item.get("id") not in present_ids:
+                        restored.append(reasoning_item)
+                        present_ids.add(reasoning_item.get("id"))
+        restored.append(item)
+    return restored
+
+
+def build_openai_request(body: dict, zep_context: Optional[str]) -> dict:
+    """Make the OpenAI Responses API request from the ElevenLabs request.
+
+    GPT-6 Luna supports function tools with low reasoning on the Responses
+    API. The proxy always sets low reasoning and keeps a reasoning summary
+    setting from ElevenLabs. The proxy does not forward sampling parameters
+    such as temperature, because GPT-6 Luna does not accept them.
+
+    The proxy requires the full input history for each request. It rejects
+    previous_response_id because responses are not stored on the OpenAI
+    server. When Zep returns context, the proxy appends the
+    context to the instructions of the caller. OpenAI does not carry the
+    instructions of a previous response over to the next response, so each
+    request has its own instructions.
+    """
+    openai_request = {
+        field: body[field] for field in FORWARDED_RESPONSES_FIELDS if field in body
+    }
+    openai_request["model"] = body.get("model") or DEFAULT_MODEL
+    openai_request["input"] = restore_reasoning_items(body.get("input", []))
+    openai_request["reasoning"] = {**(body.get("reasoning") or {}), "effort": "low"}
+    openai_request["store"] = False
+    openai_request["include"] = ["reasoning.encrypted_content"]
+    if zep_context:
+        instructions = body.get("instructions") or ""
+        openai_request["instructions"] = (instructions + zep_context_block(zep_context)).lstrip()
+    openai_request["stream"] = True
+    return openai_request
+
+
+def sse_event(event_type: str, data: dict) -> str:
+    """Format one Responses API server-sent event."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
 
 async def stream_openai_response(
-    request_body: dict,
-    messages: list,
+    openai_request: dict,
     user_uuid: Optional[str] = None,
     conversation_id: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
     """
-    Stream the response from OpenAI back to ElevenLabs.
+    Stream the OpenAI Responses API events back to ElevenLabs.
 
-    ElevenLabs expects SSE format matching OpenAI's streaming response.
-    Also collects the full response to persist to Zep.
+    ElevenLabs reads the Responses API events, which include the text deltas
+    and the function calls. The proxy also collects the full text to persist
+    to Zep.
     """
     full_response_content = []
 
     try:
-        # Prepare the request for OpenAI
-        openai_request = {
-            "model": request_body.get("model", "gpt-5-mini"),
-            "messages": messages,
-            "stream": True,
-        }
+        response = await openai_client.responses.create(**openai_request)
 
-        # GPT-5 only accepts its default temperature, and uses
-        # max_completion_tokens instead of the deprecated max_tokens field.
-        if (
-            "temperature" in request_body
-            and not openai_request["model"].startswith("gpt-5")
-        ):
-            openai_request["temperature"] = request_body["temperature"]
-        if "max_tokens" in request_body:
-            token_field = (
-                "max_completion_tokens"
-                if openai_request["model"].startswith("gpt-5")
-                else "max_tokens"
-            )
-            openai_request[token_field] = request_body["max_tokens"]
+        async for event in response:
+            yield sse_event(event.type, event.model_dump(mode="json"))
 
-        # Handle tools if ElevenLabs sends them
-        if "tools" in request_body:
-            openai_request["tools"] = request_body["tools"]
-
-        # Stream from OpenAI
-        response = await openai_client.chat.completions.create(**openai_request)
-
-        async for chunk in response:
-            # Convert chunk to SSE format
-            chunk_dict = chunk.model_dump()
-            yield f"data: {json.dumps(chunk_dict)}\n\n"
-
-            # Collect content for Zep persistence
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                full_response_content.append(chunk.choices[0].delta.content)
+            if event.type == "response.output_text.delta":
+                full_response_content.append(event.delta)
+            elif event.type == "response.completed":
+                remember_reasoning_items(
+                    [item.model_dump(mode="json", exclude_none=True) for item in event.response.output]
+                )
 
         # Send the [DONE] marker
         yield "data: [DONE]\n\n"
@@ -311,32 +402,24 @@ async def stream_openai_response(
 
     except Exception as e:
         logger.error(f"Error streaming from OpenAI: {e}")
-        # Send an error message in a format ElevenLabs can handle
-        error_chunk = {
-            "id": "error",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": request_body.get("model", "unknown"),
-            "choices": [{
-                "index": 0,
-                "delta": {"content": "An error occurred processing your request."},
-                "finish_reason": "stop"
-            }]
-        }
-        yield f"data: {json.dumps(error_chunk)}\n\n"
+        # Send an error event in the format that ElevenLabs reads
+        yield sse_event(
+            "error",
+            {"type": "error", "error": {"message": "An error occurred processing your request."}},
+        )
         yield "data: [DONE]\n\n"
 
 
-@app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
+@app.post("/v1/responses")
+async def responses(request: Request):
     """
     Main endpoint that ElevenLabs will call.
 
-    This mimics the OpenAI chat completions endpoint but:
+    This mimics the OpenAI Responses API endpoint but:
     1. Fetches context from Zep (user facts + session history)
-    2. Injects that context into the system prompt
+    2. Injects that context into the instructions
     3. Persists messages to Zep for memory extraction
-    4. Forwards to OpenAI and streams the response back
+    4. Forwards to OpenAI with low reasoning and streams the response back
 
     AUTHENTICATION REQUIRED: Include your PROXY_API_KEY in one of:
     - Authorization: Bearer <key>
@@ -356,8 +439,18 @@ async def chat_completions(request: Request):
         # Parse the incoming request
         body = await request.json()
 
+        if body.get("previous_response_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "previous_response_id is not supported because the proxy uses store=False. "
+                    "Send the full conversation history in input, including function calls "
+                    "and function-call outputs."
+                ),
+            )
+
         # Extract from elevenlabs_extra_body (this is where customLlmExtraBody ends up)
-        extra_body = body.get("elevenlabs_extra_body", {})
+        extra_body = body.get("elevenlabs_extra_body") or {}
         user_uuid = extra_body.get("user_uuid")
         conversation_id = extra_body.get("conversation_id")
 
@@ -377,15 +470,8 @@ async def chat_completions(request: Request):
         # Make sure that the user exists in Zep
         await ensure_zep_user_exists(user_uuid)
 
-        # Get original messages
-        messages = body.get("messages", [])
-
         # Find the latest user message
-        user_message = None
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_message = msg.get("content", "")
-                break
+        user_message = new_user_turn(body.get("input", []))
 
         # PERFORMANCE OPTIMIZATION: Use add_message_and_get_context which
         # adds the user message to Zep AND returns the full context block in
@@ -396,14 +482,14 @@ async def chat_completions(request: Request):
                 user_uuid, conversation_id, user_message
             )
         else:
-            # No user message - this shouldn't normally happen
+            # Tool continuations do not add another user turn.
             zep_context = None
 
-        messages = inject_context_into_messages(messages, zep_context)
+        openai_request = build_openai_request(body, zep_context)
 
         # Stream the response back (also persists assistant response to Zep)
         return StreamingResponse(
-            stream_openai_response(body, messages, user_uuid, conversation_id),
+            stream_openai_response(openai_request, user_uuid, conversation_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -414,7 +500,7 @@ async def chat_completions(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in chat_completions: {e}")
+        logger.error(f"Error in responses: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -507,7 +593,7 @@ async def root():
         "service": "ElevenLabs-Zep Proxy",
         "description": "Custom LLM proxy that injects Zep context into every request",
         "endpoints": {
-            "POST /v1/chat/completions": "Main endpoint for ElevenLabs",
+            "POST /v1/responses": "Main endpoint for ElevenLabs (Responses API)",
             "POST /create-user": "Create a Zep user and return its UUID",
             "POST /warm-user-cache": "Pre-warm Zep cache for a user (call when user arrives on page)",
             "GET /health": "Health check",
@@ -526,7 +612,7 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     logger.info(f"Starting ElevenLabs-Zep Proxy on port {port}")
     logger.info("Endpoints:")
-    logger.info(f"  - POST http://localhost:{port}/v1/chat/completions")
+    logger.info(f"  - POST http://localhost:{port}/v1/responses")
     logger.info(f"  - GET  http://localhost:{port}/health")
 
     uvicorn.run(app, host="0.0.0.0", port=port)

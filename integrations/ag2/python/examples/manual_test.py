@@ -260,12 +260,14 @@ async def test_5_ag2_agent_with_tools() -> bool:
         print(f"  OK: Created user '{user_uuid}' and thread '{thread_uuid}'")
 
         from autogen import AssistantAgent, LLMConfig, UserProxyAgent
+        from responses_client import OpenAIResponsesModelClient
 
         llm_config = LLMConfig(
             {
-                "model": "gpt-4o-mini",
+                "model": "gpt-6-luna",
+                "reasoning_effort": "low",
+                "model_client_cls": "OpenAIResponsesModelClient",
                 "api_key": os.environ["OPENAI_API_KEY"],
-                "temperature": 0,
             }
         )
 
@@ -291,6 +293,7 @@ async def test_5_ag2_agent_with_tools() -> bool:
         # The synchronous tools use the synchronous Zep client.
         tools_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
         tools = register_all_tools(assistant, user_proxy, tools_zep, graph_uuid, thread_uuid)
+        assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
         print(f"  OK: Registered {len(tools)} tools: {list(tools.keys())}")
 
         # Enrich with any existing memory

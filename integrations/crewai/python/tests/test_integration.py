@@ -33,6 +33,7 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -43,7 +44,7 @@ import pytest
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 ZEP_API_URL = os.environ.get("ZEP_API_URL", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 # The v4 SDK reads only ZEP_API_KEY; a non-default API is passed explicitly
 # as base_url, which must end in /api/v4.
@@ -55,7 +56,10 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
         allow_module_level=True,
     )
 
+sys.path.insert(0, str(Path(__file__).parents[1] / "examples"))
+
 from crewai import Agent, Crew, Process, Task  # noqa: E402
+from responses_llm import ReasoningReplayOpenAICompletion  # noqa: E402
 from zep_cloud.client import Zep  # noqa: E402
 
 from zep_crewai import ZepUserStorage, create_search_tool  # noqa: E402
@@ -205,7 +209,7 @@ def main() -> None:
                 "You recall what you know about the user by searching Zep memory before answering."
             ),
             tools=[search_tool],
-            llm=OPENAI_MODEL,
+            llm=ReasoningReplayOpenAICompletion(model=OPENAI_MODEL),
             verbose=False,
         )
         task = Task(
@@ -288,7 +292,7 @@ def test_integration_full_lifecycle() -> None:
             goal="Answer questions about the user using their Zep memory",
             backstory="You recall what you know about the user by searching Zep memory.",
             tools=[search_tool],
-            llm=OPENAI_MODEL,
+            llm=ReasoningReplayOpenAICompletion(model=OPENAI_MODEL),
             verbose=False,
         )
         task = Task(

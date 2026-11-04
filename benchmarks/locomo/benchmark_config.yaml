@@ -19,12 +19,10 @@ graph_params:
 # Model configuration
 models:
   # Response generation model
-  response_model: "gpt-4o-mini"
-  response_temperature: 0.0
+  response_model: "gpt-6-luna"
 
   # Grader model
-  grader_model: "gpt-4o-mini"
-  grader_temperature: 0.0
+  grader_model: "gpt-6-luna"
 
 # LOCOMO dataset settings
 locomo:

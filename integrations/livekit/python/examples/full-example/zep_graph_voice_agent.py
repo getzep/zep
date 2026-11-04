@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.plugins import openai, silero
+from openai.types import Reasoning
 from pydantic import Field
 from zep_cloud import SearchFilters
 from zep_cloud.client import AsyncZep
@@ -55,6 +56,14 @@ load_dotenv()
 GRAPH_UUID = os.getenv("ZEP_GRAPH_UUID", "")
 GRAPH_NAME = "Travel Knowledge Graph"
 USER_NAME = "John"
+OPENAI_MODEL = "gpt-6-luna"
+
+
+def build_llm() -> openai.responses.LLM:
+    return openai.responses.LLM(
+        model=OPENAI_MODEL,
+        reasoning=Reasoning(effort="low"),
+    )
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -84,7 +93,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 5: Create agent session with OpenAI components
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-5-nano-2025-08-07"),
+        llm=build_llm(),
         tts=openai.TTS(voice="alloy"),
         vad=silero.VAD.load(),
     )

@@ -12,4 +12,4 @@ In the case of LongMemEval, results are saved in a JSON file.
 
 
 Both notebooks also contain a cell to run the experiment against a baseline.
-Models will default to gpt-4o-mini but can be updated in code.
+Models default to `gpt-6-luna` with explicit low reasoning.

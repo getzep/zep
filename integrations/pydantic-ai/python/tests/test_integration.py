@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import os
 import sys
@@ -35,7 +36,7 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -45,6 +46,12 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
 
 from pydantic_ai import Agent  # noqa: E402
 from pydantic_ai.capabilities import ProcessHistory  # noqa: E402
+from pydantic_ai.models.openai import (  # noqa: E402
+    OpenAIModelProfile,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
+from pydantic_ai.profiles.openai import openai_model_profile  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
 from zep_pydantic_ai import (  # noqa: E402
@@ -63,6 +70,11 @@ _suffix = uuid4().hex[:8]
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+MODEL_SETTINGS = OpenAIResponsesModelSettings(
+    openai_reasoning_effort="low",
+    openai_store=False,
+    openai_send_reasoning_ids=True,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -107,8 +119,16 @@ async def wait_for_episodes_processed(
 
 def build_agent() -> Agent:
     """Build the Pydantic AI agent; per-user identity is supplied via ZepDeps."""
+    profile = dataclasses.replace(
+        OpenAIModelProfile.from_profile(openai_model_profile(OPENAI_MODEL)),
+        supports_thinking=True,
+        openai_supports_reasoning=True,
+        openai_supports_encrypted_reasoning_content=True,
+    )
+    model = OpenAIResponsesModel(OPENAI_MODEL, provider="openai", profile=profile)
     return Agent(
-        f"openai:{OPENAI_MODEL}",
+        model,
+        model_settings=MODEL_SETTINGS,
         deps_type=ZepDeps,
         capabilities=[ProcessHistory(zep_history_processor)],
         tools=[create_zep_search_tool()],

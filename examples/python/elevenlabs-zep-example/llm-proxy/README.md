@@ -46,6 +46,15 @@ python test_proxy_locally.py
 
 This simulates what ElevenLabs would send and shows the injected context.
 
+### 5. Run the Mocked Tests
+
+The mocked tests do not call OpenAI or Zep:
+
+```bash
+pip install pytest
+python -m pytest tests
+```
+
 ## Connecting to ElevenLabs
 
 ### Step 1: Expose Your Proxy Publicly
@@ -76,7 +85,7 @@ You'll get a URL like `https://abc123.ngrok.io`
 2. Create a new agent or select an existing one
 3. In the agent settings, go to **Model** section
 4. Select **Custom LLM**
-5. Enter your proxy URL: `https://your-ngrok-url.ngrok.io/v1/chat/completions`
+5. Enter your proxy URL: `https://your-ngrok-url.ngrok.io/v1/responses` (Responses API format), and set the Model ID to `gpt-6-luna`
 6. Save the agent
 
 ### Step 4: Pass the User UUID
@@ -105,8 +114,12 @@ In your agent config, you can pass dynamic variables that get included in the re
 2. **The proxy extracts the user_uuid** from the request
 3. **The proxy calls Zep** to get context (facts, memories) for that user
 4. **The proxy injects the context** into the system prompt
-5. **The proxy forwards to OpenAI** and streams the response back
+5. **The proxy forwards to the OpenAI Responses API** with `gpt-6-luna` and low reasoning, and streams the events back. The proxy keeps the reasoning items of each function call (at most 1,000 calls, for at most one hour) and sends them again when ElevenLabs continues the tool loop. The proxy forwards `instructions` without change, and appends the Zep context to the instructions only when Zep returns context.
 6. **ElevenLabs receives the response** with the context already incorporated
+
+The proxy sets `store=False` and requests encrypted reasoning content. The proxy can replay reasoning without storing Responses on the OpenAI server.
+
+Each request must include the full conversation history in `input`, including the function calls and their outputs. Requests with `previous_response_id` return HTTP 400 before the proxy calls Zep or OpenAI. Server-side continuation IDs cannot refer to responses that the proxy did not store.
 
 ## Files
 
@@ -125,7 +138,7 @@ Edit `proxy_server.py` to use a different provider:
 
 ### Modify Context Injection
 
-The `inject_context_into_messages()` function controls how context is added. You can:
+The `build_openai_request()` and `zep_context_block()` functions control how context is added. You can:
 - Add context as a separate user message
 - Use different formatting
 - Filter which facts to include

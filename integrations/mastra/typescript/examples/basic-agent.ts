@@ -24,6 +24,7 @@
 import { ZepClient } from "@getzep/zep-cloud";
 import { Agent } from "@mastra/core/agent";
 import { createZepProcessors, createZepUserAndThread } from "../src/index.js";
+import { EXAMPLE_MODEL, exampleProviderOptions } from "./model.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -74,7 +75,8 @@ async function main(): Promise<void> {
       "You are a helpful assistant with long-term memory about the user, " +
       "injected automatically into your context. Personalize your replies " +
       "using what you know about the user.",
-    model: "openai/gpt-5-mini",
+    model: EXAMPLE_MODEL,
+    defaultOptions: { providerOptions: exampleProviderOptions },
     inputProcessors: [inputProcessor],
     outputProcessors: [outputProcessor],
   });

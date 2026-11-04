@@ -18,6 +18,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
+from responses_client import OpenAIResponsesModelClient
 from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import create_thread, create_user, register_all_tools
@@ -46,7 +47,14 @@ def main() -> None:
 
     zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig(
+        {
+            "model": "gpt-6-luna",
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": os.environ["OPENAI_API_KEY"],
+        }
+    )
 
     researcher = AssistantAgent(
         name="researcher",
@@ -68,6 +76,8 @@ def main() -> None:
     # Register all tools on both agents, with user_proxy as executor
     register_all_tools(researcher, user_proxy, zep, graph_uuid, thread_uuid)
     register_all_tools(writer, user_proxy, zep, graph_uuid, thread_uuid)
+    researcher.register_model_client(model_client_cls=OpenAIResponsesModelClient)
+    writer.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     # Create a group chat
     group_chat = GroupChat(
@@ -76,6 +86,7 @@ def main() -> None:
         max_round=6,
     )
     manager = GroupChatManager(groupchat=group_chat, llm_config=llm_config)
+    manager.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     try:
         user_proxy.initiate_chat(

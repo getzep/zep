@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.plugins import openai, silero
+from openai.types import Reasoning
 from zep_cloud.client import AsyncZep
 
 from zep_livekit import ZepUserAgent, create_thread, create_user
@@ -18,6 +19,14 @@ USER_UUID = os.getenv("ZEP_USER_UUID", "")
 USER_FIRST_NAME = "John"
 USER_LAST_NAME = "Doe"
 USER_EMAIL = "john.doe@example.com"
+OPENAI_MODEL = "gpt-6-luna"
+
+
+def build_llm() -> openai.responses.LLM:
+    return openai.responses.LLM(
+        model=OPENAI_MODEL,
+        reasoning=Reasoning(effort="low"),
+    )
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -49,7 +58,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 5: Create agent session with OpenAI components
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-5-nano-2025-08-07"),
+        llm=build_llm(),
         tts=openai.TTS(voice="alloy"),
         vad=silero.VAD.load(),
     )
