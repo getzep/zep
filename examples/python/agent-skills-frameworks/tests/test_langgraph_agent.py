@@ -121,6 +121,7 @@ def test_tool_callbacks_record_order_and_expose_tool_error() -> None:
             "none",
             [],
             recorder,  # type: ignore[arg-type]
+            False,
             test_model=model,
         )
     )
@@ -167,6 +168,7 @@ def test_parallel_tool_calls_are_rejected_before_execution() -> None:
                 "none",
                 [],
                 RecordingTrace(),  # type: ignore[arg-type]
+                False,
                 test_model=model,
             )
         )

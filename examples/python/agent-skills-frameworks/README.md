@@ -1,11 +1,11 @@
-# Agent Skills with LangGraph
+# Agent Skills with LangGraph, Google ADK, and Claude Agent SDK
 
 This example shows how to use Zep Agent Skills with LangGraph. The banking data
 is invented. Read the [banking task](../agent-skills-banking/README.md) for its
 task description.
 
-The example uses a shared banking tool layer. A framework adapter connects the
-tools to LangGraph. This design will support later framework examples.
+The example uses a shared banking tool layer. Each framework adapter uses the
+same tools and records the same Trace events.
 
 ## Learning loop
 
@@ -29,17 +29,37 @@ uv sync --group dev
 Set `ANTHROPIC_API_KEY` and `ZEP_API_KEY`. You can set `ZEP_BASE_URL` to use a
 custom Zep environment. The URL must use HTTPS.
 
-## Run
+## Framework adapters
 
-Run one teacher and one Skill-assisted student:
+### LangGraph
+
+The LangGraph adapter uses a LangChain callback handler for Trace events.
 
 ```bash
-uv run python run.py run --framework langgraph --output runs/first-run
+uv run python run.py run --framework langgraph --output runs/langgraph-run
 ```
 
-The command uses `claude-opus-5-5` for the teacher and `claude-haiku-5-5` for
-the student. It writes the run artifacts under the output directory. The
-`runs/` directory is ignored by Git.
+### Google ADK
+
+The Google ADK adapter uses a `BasePlugin` for model and tool callbacks.
+
+```bash
+uv run python run.py run --framework adk --output runs/adk-run
+```
+
+### Claude Agent SDK
+
+The Claude Agent SDK adapter uses `PreToolUse`, `PostToolUse`, and
+`PostToolUseFailure` hooks.
+
+```bash
+uv run python run.py run --framework claude-agent-sdk --output runs/claude-agent-sdk-run
+```
+
+Each command runs a teacher and a Skill-assisted student. It uses
+`claude-opus-5-5` for the teacher and `claude-haiku-5-5` for the student. It
+writes the run artifacts under the output directory. The `runs/` directory is
+ignored by Git.
 
 ## Checks
 

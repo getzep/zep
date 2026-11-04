@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import deque
-from dataclasses import dataclass
 from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
@@ -19,6 +18,7 @@ from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langchain_openai import ChatOpenAI
 
 from banking import Case, PackageSelection
+from episode import EpisodeResult, text_content
 from prompts import SYSTEM, TEACHING_REQUEST, USER
 from tools import BankingTools, ToolError
 from zep_skills import TraceRecorder
@@ -107,25 +107,6 @@ def build_model(model_name: str, effort: str) -> BaseChatModel:
     )
 
 
-def _text_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            str(item.get("text", ""))
-            for item in content
-            if isinstance(item, dict) and item.get("type") == "text"
-        )
-    return ""
-
-
-@dataclass
-class EpisodeResult:
-    final_answer: str
-    tokens: int
-    tools: BankingTools
-
-
 class TraceCallbacks(BaseCallbackHandler):
     raise_error = True
 
@@ -154,7 +135,7 @@ class TraceCallbacks(BaseCallbackHandler):
                     continue
                 usage = message.usage_metadata or {}
                 self.tokens += int(usage.get("total_tokens", 0))
-                text = _text_content(message.content)
+                text = text_content(message.content)
                 if text.strip():
                     self.recorder.append("decision", text)
                 if len(message.tool_calls) > 1:
@@ -321,7 +302,7 @@ async def run_episode(
     effort: str,
     skills: list[dict[str, Any]],
     recorder: TraceRecorder,
-    teaching: bool = False,
+    teaching: bool,
     *,
     test_model: BaseChatModel | None = None,
 ) -> EpisodeResult:
@@ -352,7 +333,7 @@ async def run_episode(
             config={"callbacks": [callbacks], "recursion_limit": 302},
         )
     messages = result["messages"]
-    final_answer = _text_content(messages[-1].content) if messages else ""
+    final_answer = text_content(messages[-1].content) if messages else ""
     if not final_answer.strip():
         raise RuntimeError("The agent returned an empty final answer.")
     return EpisodeResult(final_answer, callbacks.tokens, tools)

@@ -3,6 +3,9 @@ name = "agent-skills-frameworks"
 version = "0.1.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "anthropic>=0.78,<1",
+    "claude-agent-sdk==0.2.178",
+    "google-adk==2.13.0",
     "httpx>=0.28,<0.29",
     "langchain==1.4.8",
     "langchain-anthropic==1.7.9",
@@ -23,7 +26,7 @@ target-version = "py312"
 pythonpath = ["."]
 
 [tool.pyright]
-include = ["banking.py", "langgraph_agent.py", "prompts.py", "run.py", "tools.py", "zep_skills.py", "tests"]
+include = ["adk_agent.py", "banking.py", "claude_agent_sdk_agent.py", "episode.py", "langgraph_agent.py", "prompts.py", "run.py", "tools.py", "zep_skills.py", "tests"]
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "basic"

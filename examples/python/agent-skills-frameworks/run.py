@@ -12,9 +12,18 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import adk_agent
+import claude_agent_sdk_agent
+import langgraph_agent
 from banking import Case, expected_database, make_case, score
-from langgraph_agent import EpisodeResult, run_episode
+from episode import EpisodeResult
 from zep_skills import FAMILY, TraceRecorder, ZepSkills
+
+FRAMEWORKS = {
+    "langgraph": langgraph_agent.run_episode,
+    "adk": adk_agent.run_episode,
+    "claude-agent-sdk": claude_agent_sdk_agent.run_episode,
+}
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -97,6 +106,7 @@ async def run_stage(
     effort: str,
     skills: list[dict[str, Any]],
     teaching: bool,
+    framework: str,
 ) -> dict[str, Any]:
     path.mkdir(parents=True, exist_ok=False)
     write_stage_start(path, case, model, effort, teaching, skills)
@@ -106,7 +116,7 @@ async def run_stage(
     try:
         trace_uuid = recorder.start()
         write_json(path / "trace-start.json", {"trace_uuid": trace_uuid, "event_count": 0})
-        result: EpisodeResult = await run_episode(
+        result: EpisodeResult = await FRAMEWORKS[framework](
             case,
             model,
             effort,
@@ -191,6 +201,7 @@ async def run_command(args: argparse.Namespace) -> int:
             args.teacher_effort,
             [],
             True,
+            args.framework,
         )
         if not teacher["passed"]:
             raise RuntimeError("The teacher did not pass the local banking score.")
@@ -246,6 +257,7 @@ async def run_command(args: argparse.Namespace) -> int:
             args.effort,
             student_skills,
             False,
+            args.framework,
         )
         used_skills = {
             call["arguments"].get("skill_uuid")
@@ -313,7 +325,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Agent Skills framework example.")
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="Run a teacher and a Skill-assisted student.")
-    run.add_argument("--framework", choices=["langgraph"], default="langgraph")
+    run.add_argument(
+        "--framework",
+        choices=["langgraph", "adk", "claude-agent-sdk"],
+        default="langgraph",
+    )
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--teacher", default="claude-opus-5-5")
     run.add_argument("--teacher-effort", default="max")
