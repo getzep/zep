@@ -1,3 +1,5 @@
+import type { Case } from "./banking.js";
+
 export const SYSTEM = (
   "You are a banking service agent. Resolve the customer's request using the local " +
   "banking tools and the bank's policies. The customer is already verified and has " +
@@ -32,3 +34,8 @@ export const TEACHING_REQUEST = (
   "The reusable procedure must not prescribe fixed product pairings; the winning " +
   "allocation depends on each case's balances."
 );
+
+export function userPrompt(caseData: Case, teaching: boolean) {
+  const prompt = USER.replace("{month}", caseData.statement_month).replace("{case_id}", caseData.case_id);
+  return teaching ? `${prompt}\n\n${TEACHING_REQUEST}` : prompt;
+}

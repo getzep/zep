@@ -9,7 +9,7 @@ import type { Case } from "../src/banking.js";
 import { BankingTools } from "../src/tools.js";
 import type { EpisodeResult } from "../src/episode.js";
 import type { TraceRecorder } from "../src/zep-skills.js";
-import { SYSTEM, TEACHING_REQUEST, USER } from "../src/prompts.js";
+import { SYSTEM, userPrompt } from "../src/prompts.js";
 
 type EveRecorder = Pick<TraceRecorder, "append">;
 
@@ -62,8 +62,7 @@ export async function runEpisode(
     writeFileSync(join(workdir, "package.json"), readFileSync(join(packageDir, "package.json")));
     symlinkSync(join(packageDir, "node_modules"), join(workdir, "node_modules"), "dir");
     writeFileSync(join(workdir, "tsconfig.json"), readFileSync(join(packageDir, "tsconfig.json")));
-    writeFileSync(join(workdir, "agent", "instructions.md"),
-      SYSTEM.replace("{catalog}", JSON.stringify(skills)) + (teaching ? `\n\n${TEACHING_REQUEST}` : ""));
+    writeFileSync(join(workdir, "agent", "instructions.md"), SYSTEM.replace("{catalog}", JSON.stringify(skills)));
     writeFileSync(input, JSON.stringify({ case: caseData, skills }));
     writeFileSync(output, JSON.stringify({ calls: [], database: { credits: [], reports: [] } }));
 
@@ -87,7 +86,7 @@ export async function runEpisode(
     child.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
     const client = new Client({ baseUrl: `http://127.0.0.1:${port}` });
     await waitForServer(client, child);
-    const prompt = USER.replace("{month}", caseData.statement_month).replace("{case_id}", caseData.case_id);
+    const prompt = userPrompt(caseData, teaching);
     await recorder.append("input_reference", prompt);
     // Eve's local server owns the session and tool state; its hooks write live Trace events directly through the typed Zep client.
     const { delivery } = await client.sessions.create({ message: prompt });
@@ -95,12 +94,8 @@ export async function runEpisode(
     const stream = (async () => {
       for await (const event of delivery.stream()) {
         if (event.type !== "usage.recorded") continue;
-        const data = event.data as unknown as Record<string, unknown>;
-        const usage = (data.usage ?? data) as Record<string, unknown>;
-        tokens += Number(usage.inputTokens ?? usage.input_tokens ?? 0) +
-          Number(usage.outputTokens ?? usage.output_tokens ?? 0) +
-          Number(usage.cacheReadTokens ?? usage.cache_read_input_tokens ?? 0) +
-          Number(usage.cacheWriteTokens ?? usage.cache_creation_input_tokens ?? 0);
+        const usage = event.data.usage;
+        tokens += usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
       }
     })();
     const result = await delivery.result();

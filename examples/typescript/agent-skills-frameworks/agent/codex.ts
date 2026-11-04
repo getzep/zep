@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Codex, type ThreadEvent } from "@openai/codex-sdk";
 import type { Case } from "../src/banking.js";
-import { SYSTEM, TEACHING_REQUEST, USER } from "../src/prompts.js";
+import { SYSTEM, userPrompt } from "../src/prompts.js";
 import { BankingTools, toolSchemas } from "../src/tools.js";
 import type { EpisodeResult } from "../src/episode.js";
 import type { TraceRecorder } from "../src/zep-skills.js";
@@ -61,12 +61,14 @@ export async function runEpisode(
   const packageDir = process.cwd();
   const codex = new Codex({
     apiKey: process.env.OPENAI_API_KEY,
+    baseUrl: process.env.OPENAI_BASE_URL,
     env: {
       ...process.env as Record<string, string>,
       BANKING_INPUT_PATH: inputPath,
       BANKING_STATE_PATH: statePath,
     },
     config: {
+      developer_instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)),
       mcp_servers: {
         banking: {
           command: process.execPath,
@@ -114,9 +116,7 @@ export async function runEpisode(
     webSearchEnabled: false,
     modelReasoningEffort: effort as "low" | "medium" | "high" | "xhigh" | "max" | "ultra",
   });
-  const prompt = SYSTEM.replace("{catalog}", JSON.stringify(skills)) +
-    (teaching ? `\n\n${TEACHING_REQUEST}` : "") +
-    `\n\n${USER.replace("{month}", caseData.statement_month).replace("{case_id}", caseData.case_id)}`;
+  const prompt = userPrompt(caseData, teaching);
   await recorder.append("input_reference", prompt);
   const streamed = await thread.runStreamed(prompt);
   let finalAnswer = "";

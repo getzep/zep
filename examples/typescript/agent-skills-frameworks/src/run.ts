@@ -68,8 +68,8 @@ function help() {
 Options:
   --teacher <model>          Teacher model (default: claude-opus-5-5)
   --teacher-effort <effort>  Teacher reasoning effort (default: max; Codex: ultra)
-  --student <model>          Student model (default: claude-haiku-5-5)
-  --effort <effort>          Student reasoning effort (default: none)
+  --student <model>          Student model (default: claude-haiku-5-5; Codex: gpt-6-luna)
+  --effort <effort>          Student reasoning effort (default: none; Codex: low)
   --teacher-seed <integer>   Teacher case seed (default: 22)
   --seed <integer>           Student case seed (default: 10134)
   --compile-timeout <seconds>Skill compilation timeout (default: 900)

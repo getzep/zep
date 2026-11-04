@@ -12,11 +12,11 @@ Use Node.js 24 or later. The tested runtime is Node.js 24.22.2. Install the pack
 npm ci
 ```
 
-Set `ZEP_API_KEY` and, when needed, `ZEP_BASE_URL`. Mastra and Eve also need `ANTHROPIC_API_KEY`. Codex needs `OPENAI_API_KEY` or a configured Codex login. The example uses direct provider calls. It does not use LiteLLM or an AI Gateway.
+Set `ZEP_API_KEY` and, when needed, `ZEP_BASE_URL`. Mastra and Eve also need `ANTHROPIC_API_KEY`. Codex needs `OPENAI_API_KEY` or a configured Codex login. Set `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` only when your provider uses a custom endpoint. The example adds `/v1` to `ANTHROPIC_BASE_URL` when needed. The example uses direct provider calls. It does not use LiteLLM or an AI Gateway.
 
 ## Mastra
 
-Mastra uses its `onInputAvailable` and `onOutput` tool callbacks to record tool events. Its `onStepFinish` callback records assistant text. Anthropic tool calls run in sequence.
+Mastra uses `onInputAvailable` and `onOutput` to record tool events. Its `onStepFinish` callback records assistant text after the step completes. The tested `onChunk` hook did not expose text before the tool callbacks. Anthropic tool calls run in sequence.
 
 ```bash
 npm run run -- run --framework mastra --output runs/mastra-demo
@@ -24,7 +24,7 @@ npm run run -- run --framework mastra --output runs/mastra-demo
 
 ## OpenAI Codex SDK
 
-Codex uses a local stdio MCP server for the nine banking tools. The adapter records `runStreamed` events. It runs in a temporary read-only directory, disables network and web search, and turns off the installed shell, code-mode, browser, computer-use, image, and app tools. The installed Codex model catalog describes `gpt-6-astra` as its frontier model and `gpt-6-luna` as fast and affordable. The teacher uses `gpt-6-astra` at `ultra`, the highest effort that the installed SDK supports. The student uses `gpt-6-luna` at low effort.
+Codex uses a local stdio MCP server for the nine banking tools. The adapter records `runStreamed` events and sets the system prompt as developer instructions. It runs in a temporary read-only directory, disables network and web search, and turns off the installed shell, code-mode, browser, computer-use, image, and app tools. It passes `OPENAI_BASE_URL` to the Codex CLI when that variable is set. The installed Codex model catalog describes `gpt-6-astra` as its frontier model and `gpt-6-luna` as fast and affordable. The teacher uses `gpt-6-astra` at `ultra`, the highest effort that the installed SDK supports. The student uses `gpt-6-luna` at low effort.
 
 ```bash
 npm run run -- run --framework codex --output runs/codex-demo

@@ -3,7 +3,8 @@ import { Agent } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import type { Case } from "../src/banking.js";
 import { EpisodeResult } from "../src/episode.js";
-import { SYSTEM, TEACHING_REQUEST, USER } from "../src/prompts.js";
+import { getAnthropicBaseURL } from "../src/anthropic.js";
+import { SYSTEM, userPrompt } from "../src/prompts.js";
 import {
   BankingTools,
   ToolError,
@@ -50,22 +51,25 @@ export async function runEpisode(
           try {
             return invokeBankingTool(tools, name, input as Record<string, unknown>);
           } catch (error) {
-            return { error: error instanceof ToolError ? error.message : String(error) };
+            if (error instanceof ToolError) return { error: error.message };
+            throw error;
           }
         },
       }),
     ]),
   );
-  const client = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = createAnthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    baseURL: getAnthropicBaseURL(),
+  });
   const agent = new Agent({
     id: "synthetic-banking-agent",
     name: "Synthetic banking agent",
-    instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)) +
-      (teaching ? `\n\n${TEACHING_REQUEST}` : ""),
+    instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)),
     model: options.testModel ?? client(model),
     tools: agentTools,
   });
-  const prompt = USER.replace("{month}", caseData.statement_month).replace("{case_id}", caseData.case_id);
+  const prompt = userPrompt(caseData, teaching);
   await recorder.append("input_reference", prompt);
   const result = await agent.generate(prompt, {
     maxSteps: 120,
@@ -77,6 +81,7 @@ export async function runEpisode(
           : { thinking: { type: "adaptive" }, effort: effort === "max" ? "max" : effort as "low" | "medium" | "high" | "xhigh" }),
       },
     },
+    // The tested onChunk hook does not expose tool-step text before tool callbacks.
     onStepFinish: async (step) => {
       const text = typeof step.text === "string" ? step.text : "";
       if (text) await recorder.append("decision", text);
