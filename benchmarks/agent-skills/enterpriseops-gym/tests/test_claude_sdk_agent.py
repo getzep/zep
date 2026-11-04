@@ -632,3 +632,24 @@ def test_proxy_streams_raw_chunks_and_records_a_client_abort(tmp_path, monkeypat
     assert handler.wfile.flush_count == 1
     request_rows = (tmp_path / "capture.requests.jsonl").read_text().splitlines()
     assert json.loads(request_rows[0])["gate_passed"] is True
+
+
+def test_proxy_upstream_url_keeps_the_anthropic_host() -> None:
+    url = AnthropicCaptureProxy._upstream_url("/v1/messages?beta=a%20b")
+
+    assert str(url) == "https://api.anthropic.com/v1/messages?beta=a%20b"
+
+
+@pytest.mark.parametrize(
+    "request_target",
+    [
+        "//127.0.0.1:8000/admin",
+        "http://127.0.0.1:8000/admin",
+        "///127.0.0.1/admin",
+        "relative/path",
+        "/\\127.0.0.1/admin",
+    ],
+)
+def test_proxy_rejects_non_origin_request_targets(request_target: str) -> None:
+    with pytest.raises(ValueError, match="Invalid Anthropic proxy request target"):
+        AnthropicCaptureProxy._upstream_url(request_target)

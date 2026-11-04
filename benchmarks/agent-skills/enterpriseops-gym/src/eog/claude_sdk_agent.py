@@ -13,7 +13,7 @@ from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urlsplit
 
 import httpx
 from claude_agent_sdk import (
@@ -729,7 +729,42 @@ class AnthropicCaptureProxy:
                 }
             )
 
+    @staticmethod
+    def _upstream_url(request_target: str) -> httpx.URL:
+        try:
+            parsed = urlsplit(request_target)
+            query = parsed.query.encode("ascii")
+        except (UnicodeEncodeError, ValueError) as error:
+            raise ValueError("Invalid Anthropic proxy request target") from error
+
+        if (
+            not request_target.startswith("/")
+            or request_target.startswith("//")
+            or parsed.scheme
+            or parsed.netloc
+            or not parsed.path.startswith("/")
+            or "\\" in parsed.path
+            or parsed.fragment
+        ):
+            raise ValueError("Invalid Anthropic proxy request target")
+
+        return httpx.URL("https://api.anthropic.com").copy_with(path=parsed.path, query=query)
+
     def _forward(self, handler: BaseHTTPRequestHandler) -> None:
+        try:
+            upstream_url = self._upstream_url(handler.path)
+        except ValueError:
+            payload = json.dumps(
+                {"type": "error", "error": {"type": "invalid_request_target", "message": "Invalid request target"}}
+            ).encode()
+            handler.send_response(400)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", str(len(payload)))
+            handler.end_headers()
+            handler.wfile.write(payload)
+            handler.wfile.flush()
+            return
+
         body = b""
         if handler.command in {"POST", "PUT", "PATCH"}:
             body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
@@ -801,7 +836,7 @@ class AnthropicCaptureProxy:
                 httpx.Client(timeout=600.0) as client,
                 client.stream(
                     handler.command,
-                    urljoin("https://api.anthropic.com", handler.path),
+                    upstream_url,
                     content=body,
                     headers=headers,
                 ) as response,
