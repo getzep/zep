@@ -114,10 +114,12 @@ In your agent config, you can pass dynamic variables that get included in the re
 2. **The proxy extracts the user_uuid** from the request
 3. **The proxy calls Zep** to get context (facts, memories) for that user
 4. **The proxy injects the context** into the system prompt
-5. **The proxy forwards to the OpenAI Responses API** with `gpt-6-luna` and low reasoning, and streams the events back. The proxy keeps the reasoning items of each function call (at most 1,000 calls, for at most one hour) and sends them again when ElevenLabs continues the tool loop. The proxy forwards `instructions` and `previous_response_id` without change, and appends the Zep context to the instructions only when Zep returns context.
+5. **The proxy forwards to the OpenAI Responses API** with `gpt-6-luna` and low reasoning, and streams the events back. The proxy keeps the reasoning items of each function call (at most 1,000 calls, for at most one hour) and sends them again when ElevenLabs continues the tool loop. The proxy forwards `instructions` without change, and appends the Zep context to the instructions only when Zep returns context.
 6. **ElevenLabs receives the response** with the context already incorporated
 
 The proxy sets `store=False` and requests encrypted reasoning content. The proxy can replay reasoning without storing Responses on the OpenAI server.
+
+Each request must include the full conversation history in `input`, including the function calls and their outputs. Requests with `previous_response_id` return HTTP 400 before the proxy calls Zep or OpenAI. Server-side continuation IDs cannot refer to responses that the proxy did not store.
 
 ## Files
 

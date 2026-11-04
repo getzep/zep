@@ -64,7 +64,6 @@ DEFAULT_MODEL = "gpt-6-luna"
 # The Responses API fields that the proxy forwards from ElevenLabs to OpenAI
 FORWARDED_RESPONSES_FIELDS = (
     "instructions",
-    "previous_response_id",
     "tools",
     "tool_choice",
     "parallel_tool_calls",
@@ -337,8 +336,9 @@ def build_openai_request(body: dict, zep_context: Optional[str]) -> dict:
     setting from ElevenLabs. The proxy does not forward sampling parameters
     such as temperature, because GPT-6 Luna does not accept them.
 
-    The proxy forwards the instructions and previous_response_id of the
-    caller without change. When Zep returns context, the proxy appends the
+    The proxy requires the full input history for each request. It rejects
+    previous_response_id because responses are not stored on the OpenAI
+    server. When Zep returns context, the proxy appends the
     context to the instructions of the caller. OpenAI does not carry the
     instructions of a previous response over to the next response, so each
     request has its own instructions.
@@ -438,6 +438,16 @@ async def responses(request: Request):
     try:
         # Parse the incoming request
         body = await request.json()
+
+        if body.get("previous_response_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "previous_response_id is not supported because the proxy uses store=False. "
+                    "Send the full conversation history in input, including function calls "
+                    "and function-call outputs."
+                ),
+            )
 
         # Extract from elevenlabs_extra_body (this is where customLlmExtraBody ends up)
         extra_body = body.get("elevenlabs_extra_body") or {}

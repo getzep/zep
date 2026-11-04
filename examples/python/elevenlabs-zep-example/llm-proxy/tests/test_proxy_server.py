@@ -190,7 +190,7 @@ def test_a_new_user_turn_after_a_tool_result_is_persisted(fake_openai, monkeypat
     add_message.assert_awaited_once_with("user-uuid", "conversation-1", "New turn")
 
 
-def test_instructions_and_previous_response_id_are_kept_without_zep_context(
+def test_instructions_are_kept_without_zep_context(
     fake_openai, monkeypatch
 ):
     async def no_context(user_uuid, conversation_id, user_message):
@@ -200,7 +200,6 @@ def test_instructions_and_previous_response_id_are_kept_without_zep_context(
     responses = fake_openai([[FakeEvent("response.completed", response=FakeResponse([]))]])
     body = {
         "instructions": "You are Eva.",
-        "previous_response_id": "resp_previous",
         "input": [{"type": "function_call_output", "call_id": "call_1", "output": "ok"}],
         "elevenlabs_extra_body": EXTRA_BODY,
     }
@@ -210,9 +209,33 @@ def test_instructions_and_previous_response_id_are_kept_without_zep_context(
     assert response.status_code == 200
     request = responses.requests[0]
     assert request["instructions"] == "You are Eva."
-    assert request["previous_response_id"] == "resp_previous"
+    assert "previous_response_id" not in request
     assert request["input"] == body["input"]
     assert request["reasoning"] == {"effort": "low"}
+
+
+def test_previous_response_id_is_rejected_before_provider_calls(fake_openai, monkeypatch):
+    responses = fake_openai([])
+    ensure_user = AsyncMock()
+    add_message = AsyncMock()
+    monkeypatch.setattr(proxy_server, "ensure_zep_user_exists", ensure_user)
+    monkeypatch.setattr(proxy_server, "add_message_and_get_context", add_message)
+
+    result = TestClient(proxy_server.app).post(
+        "/v1/responses",
+        json={
+            "previous_response_id": "resp_previous",
+            "input": [{"type": "function_call_output", "call_id": "call_1", "output": "ok"}],
+            "elevenlabs_extra_body": EXTRA_BODY,
+        },
+        headers=HEADERS,
+    )
+
+    assert result.status_code == 400
+    assert "full conversation history" in result.json()["detail"]
+    assert responses.requests == []
+    ensure_user.assert_not_awaited()
+    add_message.assert_not_awaited()
 
 
 def test_zep_context_does_not_add_a_default_persona(fake_openai):
