@@ -90,7 +90,7 @@ You'll also need:
    ```
    INFO:     Starting ElevenLabs-Zep Proxy on port 8080
    INFO:     Endpoints:
-   INFO:       - POST http://localhost:8080/v1/chat/completions
+   INFO:       - POST http://localhost:8080/v1/responses
    INFO:       - GET  http://localhost:8080/health
    ```
 
@@ -117,9 +117,10 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 4. **Select "Custom LLM"** as the LLM provider (instead of OpenAI, Anthropic, etc.)
 
 5. **Configure the Custom LLM settings**:
-   - **Server URL**: Your ngrok URL + `/v1/chat/completions`
-     - Example: `https://abc123.ngrok-free.app/v1/chat/completions`
-   - **Model ID**: `gpt-5-mini` (or whichever OpenAI model you want the proxy to use)
+   - **Server URL**: Your ngrok URL + `/v1/responses`
+     - Example: `https://abc123.ngrok-free.app/v1/responses`
+     - Use the Responses API format. The proxy forwards each request to the OpenAI Responses API with low reasoning, because GPT-6 Luna supports function tools with low reasoning only on the Responses API.
+   - **Model ID**: `gpt-6-luna` (the proxy also uses `gpt-6-luna` when the Model ID is empty)
 
 6. **Add authentication header**:
    - Click "Add Secret Header" or similar
@@ -202,7 +203,7 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 
 ### 2. LLM Proxy (`llm-proxy/`)
 - FastAPI Python server
-- OpenAI-compatible `/v1/chat/completions` endpoint
+- OpenAI-compatible Responses API endpoint (`/v1/responses`) with low reasoning
 - Integrates with Zep for context retrieval and conversation persistence
 - Streams responses back to ElevenLabs
 

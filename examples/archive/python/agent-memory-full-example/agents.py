@@ -27,7 +27,7 @@ class ChatAgent:
     - No thread management or conversation state
     """
     
-    def __init__(self, zep_client, model: str = "gpt-5-mini"):
+    def __init__(self, zep_client, model: str = "gpt-6-luna"):
         """
         Initialize the chat agent.
 
@@ -108,6 +108,7 @@ class ChatAgent:
         stream = await self.openai_client.chat.completions.create(
             model=self.model,
             messages=messages,
+            reasoning_effort="low",
             stream=True
         )
 
@@ -163,7 +164,7 @@ class ChatAgent_GraphSearch:
     - No thread management or conversation state
     """
 
-    def __init__(self, zep_client, model: str = "gpt-5-nano-2025-08-07"):
+    def __init__(self, zep_client, model: str = "gpt-6-luna"):
         """
         Initialize the chat agent.
 
@@ -276,6 +277,7 @@ Relevant facts about the user with validity date ranges:
         stream = await self.openai_client.chat.completions.create(
             model=self.model,
             messages=messages,
+            reasoning_effort="low",
             stream=True
         )
 

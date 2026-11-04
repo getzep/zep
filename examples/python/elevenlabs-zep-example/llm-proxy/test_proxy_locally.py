@@ -27,21 +27,17 @@ ZEP_USER_UUID = os.getenv("ZEP_USER_UUID")
 async def test_proxy():
     """Send a test request to the proxy server."""
 
-    # The request format that ElevenLabs sends (OpenAI-compatible)
+    # The request format that ElevenLabs sends (OpenAI Responses API)
     test_request = {
-        "model": "gpt-5-mini",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful voice assistant named Eva. Be conversational and friendly."
-            },
+        "model": "gpt-6-luna",
+        "instructions": "You are a helpful voice assistant named Eva. Be conversational and friendly.",
+        "input": [
             {
                 "role": "user",
                 "content": "Hi there! Do you remember anything about me?"
             }
         ],
         "stream": True,
-        "temperature": 0.7,
         # This is how you'd pass the user_uuid and conversation_id from ElevenLabs
         "elevenlabs_extra_body": {
             "user_uuid": ZEP_USER_UUID,  # The UUID that setup_test_user.py printed
@@ -67,7 +63,7 @@ async def test_proxy():
     async with httpx.AsyncClient() as client:
         async with client.stream(
             "POST",
-            "http://localhost:8080/v1/chat/completions",
+            "http://localhost:8080/v1/responses",
             json=test_request,
             headers=headers,
             timeout=30.0
@@ -87,13 +83,11 @@ async def test_proxy():
                         break
 
                     try:
-                        chunk = json.loads(data)
-                        if "choices" in chunk and chunk["choices"]:
-                            delta = chunk["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                print(content, end="", flush=True)
-                                full_response += content
+                        event = json.loads(data)
+                        if event.get("type") == "response.output_text.delta":
+                            content = event.get("delta", "")
+                            print(content, end="", flush=True)
+                            full_response += content
                     except json.JSONDecodeError:
                         pass
 

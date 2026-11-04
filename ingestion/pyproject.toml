@@ -32,7 +32,7 @@ Changelog = "https://github.com/getzep/zep/blob/main/ingestion/CHANGELOG.md"
 
 [project.optional-dependencies]
 openai = [
-    "openai>=1.45.0",
+    "openai>=1.58.1",
 ]
 anthropic = [
     "anthropic>=0.40.0",
