@@ -26,19 +26,29 @@ def _make_openai_client(**kwargs: Any) -> Any:
 
 
 class OpenAILLM:
+    """Use low reasoning for Luna by default. Other models omit it.
+
+    Set ``reasoning_effort`` to an explicit value to override the model
+    default, or to ``None`` to omit the parameter for any model.
+    """
+
     def __init__(
         self,
         client: Any | None = None,
         *,
         model: str = "gpt-6-luna",
         max_tokens: int = 200,
-        reasoning_effort: str | None = "low",
+        reasoning_effort: str | None = "auto",
     ) -> None:
         require_int_range("max_tokens", max_tokens, minimum=1)
         self.client = client if client is not None else _make_openai_client()
         self.model = model
         self.max_tokens = max_tokens
-        self.reasoning_effort = reasoning_effort
+        self.reasoning_effort = (
+            ("low" if model == "gpt-6-luna" else None)
+            if reasoning_effort == "auto"
+            else reasoning_effort
+        )
 
     def complete(self, prompt: str) -> str:
         options: dict[str, Any] = {}

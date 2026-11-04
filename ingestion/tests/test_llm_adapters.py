@@ -44,6 +44,18 @@ class TestOpenAIAdapter:
         with pytest.raises(ZepDependencyError, match="zep-ingest\\[openai\\]"):
             OpenAILLM()
 
+    def test_model_override_does_not_add_reasoning_effort(self):
+        from zep_ingest.llm.openai import OpenAILLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ctx"))]
+        )
+        OpenAILLM(client=client, model="custom-model").complete("p")
+        assert "reasoning_effort" not in client.chat.completions.create.call_args.kwargs
+        OpenAILLM(client=client, model="custom-model", reasoning_effort="low").complete("p")
+        assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "low"
+
 
 class TestAnthropicAdapter:
     def test_complete_uses_messages(self):
