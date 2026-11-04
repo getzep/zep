@@ -63,11 +63,13 @@ Usage::
             last_name="Smith",
         )
 
+        # model is an OpenAIResponsesModel for gpt-6-luna with an explicit reasoning profile (see README).
         agent = Agent(
-            "openai-responses:gpt-6-luna",
+            model,
             model_settings={
                 "openai_reasoning_effort": "low",
                 "openai_send_reasoning_ids": True,
+                "openai_store": False,
             },
             deps_type=ZepDeps,
             capabilities=zep_capabilities(deps),

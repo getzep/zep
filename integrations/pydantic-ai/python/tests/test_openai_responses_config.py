@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 import httpx
 import pytest
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIModelProfile, OpenAIResponsesModel
+from pydantic_ai.profiles.openai import openai_model_profile
 
 
 def load_example(monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -33,7 +36,7 @@ async def test_example_uses_responses_and_replays_reasoning(
                 "type": "reasoning",
                 "id": "rs_1",
                 "summary": [{"type": "summary_text", "text": "thinking"}],
-                "encrypted_content": "encrypted reasoning",
+                "encrypted_content": "enc_1",
             },
             {
                 "type": "function_call",
@@ -76,7 +79,7 @@ async def test_example_uses_responses_and_replays_reasoning(
             "parallel_tool_calls": True,
             "previous_response_id": None,
             "reasoning": {"effort": "low", "summary": None},
-            "store": True,
+            "store": False,
             "temperature": None,
             "text": {"format": {"type": "text"}},
             "tool_choice": "auto",
@@ -100,7 +103,7 @@ async def test_example_uses_responses_and_replays_reasoning(
     async def dummy_tool() -> str:
         return "tool result"
 
-    agent = Agent(module.MODEL, model_settings=module.MODEL_SETTINGS, tools=[dummy_tool])
+    agent = Agent(module.build_model(), model_settings=module.MODEL_SETTINGS, tools=[dummy_tool])
     result = await agent.run("Use the tool.")
 
     assert result.output == "done"
@@ -108,9 +111,36 @@ async def test_example_uses_responses_and_replays_reasoning(
     for url, body in requests:
         assert url.endswith("/responses")
         assert body["reasoning"]["effort"] == "low"
+        assert "reasoning.encrypted_content" in body["include"]
+        assert body["store"] is False
         assert "temperature" not in body
+        assert "previous_response_id" not in body
     _, second_body = requests[1]
-    assert second_body.get("previous_response_id") == "resp_1" or any(
-        item.get("type") == "reasoning" and item.get("id") == "rs_1"
-        for item in second_body.get("input", [])
+    second_input = second_body["input"]
+    call_index = next(
+        index
+        for index, item in enumerate(second_input)
+        if item.get("type") == "function_call" and item.get("call_id") == "call_1"
     )
+    assert call_index > 0
+    assert second_input[call_index - 1]["type"] == "reasoning"
+    assert second_input[call_index - 1]["id"] == "rs_1"
+    assert second_input[call_index - 1]["encrypted_content"] == "enc_1"
+
+
+def test_luna_profile_keeps_default_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_example(monkeypatch)
+    assert isinstance(module.build_model(), OpenAIResponsesModel)
+    default_profile = dataclasses.asdict(
+        OpenAIModelProfile.from_profile(openai_model_profile("gpt-6-luna"))
+    )
+    luna_profile = dataclasses.asdict(module.LUNA_PROFILE)
+    overridden_fields = {
+        "supports_thinking",
+        "openai_supports_reasoning",
+        "openai_supports_encrypted_reasoning_content",
+    }
+    for field in overridden_fields:
+        default_profile.pop(field)
+        luna_profile.pop(field)
+    assert luna_profile == default_profile
