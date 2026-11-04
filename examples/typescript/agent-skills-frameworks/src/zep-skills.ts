@@ -6,13 +6,14 @@ import { ZepClient } from "@getzep/zep-cloud";
 export const FAMILY = "banking.synthetic-monthly-correction";
 export const QUERY = "Investigate savings interest, apply qualifying product boosts, credit shortfalls and save reports";
 type TraceEventType = "input_reference" | "decision" | "tool_call" | "tool_result";
+const LEDGER_STATUS_CODES = [200, 201, 202, 204, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504] as const;
 
 export function createLedgerFetch(ledger: string, baseFetch: typeof fetch = fetch): typeof fetch {
   return async (input, init) => {
-    let status: number | null = null;
+    let status: typeof LEDGER_STATUS_CODES[number] | "other" | null = null;
     try {
       const response = await baseFetch(input, init);
-      status = response.status;
+      status = LEDGER_STATUS_CODES.find((code) => code === response.status) ?? "other";
       return response;
     } finally {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);

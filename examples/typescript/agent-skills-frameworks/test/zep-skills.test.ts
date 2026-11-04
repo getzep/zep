@@ -8,7 +8,7 @@ import { createLedgerFetch, normalizeBaseUrl, TraceRecorder, type ZepSkills } fr
 import { FRAMEWORKS, runStage } from "../src/run.js";
 
 describe("Zep Skills client", () => {
-  it("normalizes HTTPS URLs and records mocked fetch results", async () => {
+  it("normalizes HTTPS URLs and records known response status codes", async () => {
     expect(normalizeBaseUrl("https://api.example.test/root/")).toBe("https://api.example.test/root/api/v4");
     expect(() => normalizeBaseUrl("http://api.example.test")).toThrow("HTTPS");
     const dir = mkdtempSync(join(tmpdir(), "zep-ledger-"));
@@ -16,6 +16,25 @@ describe("Zep Skills client", () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
     await createLedgerFetch(ledger, fetchMock)("https://api.example.test/api/v4/agents", { method: "POST" });
     expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual({ method: "POST", path: "/api/v4/agents", status: 202 });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("records an unknown response status as other", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zep-ledger-"));
+    const ledger = join(dir, "requests.jsonl");
+    const fetchMock = vi.fn(async () => new Response(null, { status: 418 }));
+    await createLedgerFetch(ledger, fetchMock)("https://api.example.test/api/v4/agents", { method: "POST" });
+    expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual({ method: "POST", path: "/api/v4/agents", status: "other" });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("records a null response status when the request throws", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zep-ledger-"));
+    const ledger = join(dir, "requests.jsonl");
+    const fetchMock = vi.fn(async () => { throw new Error("network failure"); });
+    await expect(createLedgerFetch(ledger, fetchMock)("https://api.example.test/api/v4/agents", { method: "POST" }))
+      .rejects.toThrow("network failure");
+    expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual({ method: "POST", path: "/api/v4/agents", status: null });
     rmSync(dir, { recursive: true, force: true });
   });
 
