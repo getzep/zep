@@ -112,7 +112,6 @@ async def run_stage(
     write_stage_start(path, case, model, effort, teaching, skills)
     recorder = TraceRecorder(zep, agent)
     started = time.monotonic()
-    trace_closed = False
     try:
         trace_uuid = recorder.start()
         write_json(path / "trace-start.json", {"trace_uuid": trace_uuid, "event_count": 0})
@@ -140,7 +139,6 @@ async def run_stage(
         write_json(path / "evaluation.json", evaluation)
         write_json(path / "result.json", row)
         trace_result = recorder.close(evaluation["passed"])
-        trace_closed = True
         write_json(path / "trace.json", trace_result)
         print(
             f"{path.name}: {'PASS' if row['passed'] else 'FAIL'}; "
@@ -149,11 +147,10 @@ async def run_stage(
         )
         return {**row, "trace": trace_result}
     except BaseException as error:
-        if recorder.trace_uuid is not None and not trace_closed:
+        if recorder.trace_uuid is not None and not recorder.close_requested:
             try:
                 trace_result = recorder.close(False)
                 write_json(path / "trace.json", trace_result)
-                trace_closed = True
             except BaseException as close_error:  # noqa: BLE001
                 write_json(
                     path / "trace-close-failure.json",

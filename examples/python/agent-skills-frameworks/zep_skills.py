@@ -189,6 +189,7 @@ class TraceRecorder:
         self.agent = agent
         self.trace_uuid: str | None = None
         self.event_count = 0
+        self.close_requested = False
 
     def start(self) -> str:
         if self.trace_uuid is not None:
@@ -256,6 +257,7 @@ class TraceRecorder:
         task_uuid = close.get("task", {}).get("uuid")
         if not task_uuid:
             raise RuntimeError("Zep did not return a Trace close Task UUID.")
+        self.close_requested = True
         deadline = time.monotonic() + 900
         while True:
             task = self.zep.client.task.get(task_uuid).model_dump(

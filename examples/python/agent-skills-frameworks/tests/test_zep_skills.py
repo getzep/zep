@@ -59,6 +59,7 @@ def test_trace_and_skill_use_sdk_requests(tmp_path: Path, monkeypatch: pytest.Mo
         assert closed["trace_uuid"] == "trace-uuid"
         assert closed["final_trace"]["verification"] == "external"
         assert closed["event_count"] == 1
+        assert recorder.close_requested
         use = zep.record_skill_use(
             "agent-uuid",
             "skill-uuid",
