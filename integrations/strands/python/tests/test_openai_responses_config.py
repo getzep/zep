@@ -41,6 +41,17 @@ async def test_example_formats_low_reasoning_responses_request(
     assert request["store"] is False
 
 
+def test_a_new_conversation_drops_unreferenced_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = load_example(monkeypatch).build_model()
+    model._reasoning_by_call_id = {"old-call": [{"type": "reasoning", "id": "old-reasoning"}]}
+
+    model._format_request([])
+
+    assert model._reasoning_by_call_id == {}
+
+
 @pytest.mark.asyncio
 async def test_stateless_tool_loop_replays_encrypted_reasoning(
     monkeypatch: pytest.MonkeyPatch,

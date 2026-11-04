@@ -182,6 +182,17 @@ class ReasoningReplayResponsesModel(OpenAIResponsesModel):
             return request
 
         reasoning_by_call_id = getattr(self, "_reasoning_by_call_id", {})
+        active_call_ids = {
+            item.get("call_id")
+            for item in input_items
+            if isinstance(item, dict) and item.get("type") == "function_call"
+        }
+        reasoning_by_call_id = {
+            call_id: items
+            for call_id, items in reasoning_by_call_id.items()
+            if call_id in active_call_ids
+        }
+        self._reasoning_by_call_id = reasoning_by_call_id
         existing_reasoning_ids = {
             item.get("id")
             for item in input_items

@@ -49,6 +49,16 @@ class ReasoningReplayOpenAICompletion(OpenAICompletion):
     ) -> dict[str, Any]:
         params = super()._prepare_responses_params(messages, tools, response_model)
         input_items = params.get("input", [])
+        active_call_ids = {
+            item.get("call_id")
+            for item in input_items
+            if isinstance(item, dict) and item.get("type") == "function_call"
+        }
+        self._reasoning_by_call = {
+            call_id: items
+            for call_id, items in self._reasoning_by_call.items()
+            if call_id in active_call_ids
+        }
         reasoning_before: dict[int, list[dict[str, Any]]] = {}
 
         for index, item in enumerate(input_items):

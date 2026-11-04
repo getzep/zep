@@ -28,6 +28,21 @@ def response(output: list[dict[str, object]], status: str = "completed") -> Simp
 
 
 @pytest.mark.asyncio
+async def test_a_new_conversation_drops_unreferenced_reasoning() -> None:
+    mock_client = MagicMock()
+    mock_client.responses.create = AsyncMock(return_value=response([]))
+    client = OpenAIResponsesChatCompletionClient(client=mock_client)
+    client._reasoning_by_call["old-call"] = [{"type": "reasoning", "id": "old-reasoning"}]
+
+    await client.create([UserMessage(content="New conversation", source="user")])
+
+    assert client._reasoning_by_call == {}
+    assert mock_client.responses.create.await_args.kwargs["input"] == [
+        {"role": "user", "content": "New conversation"}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_live_agent_accepts_memory_between_conversation_turns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

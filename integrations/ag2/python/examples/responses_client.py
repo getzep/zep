@@ -54,6 +54,15 @@ class OpenAIResponsesModelClient(ModelClient):
                     }
                 )
 
+        active_call_ids = {
+            item["call_id"] for item in input_items if item.get("type") == "function_call"
+        }
+        self._reasoning_by_call = {
+            call_id: items
+            for call_id, items in self._reasoning_by_call.items()
+            if call_id in active_call_ids
+        }
+
         create_params: dict[str, Any] = {
             "model": self.model,
             "input": input_items,

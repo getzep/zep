@@ -79,6 +79,15 @@ class OpenAIResponsesChatCompletionClient(ChatCompletionClient):
             else:
                 raise ValueError(f"Unsupported AutoGen message type: {type(message).__name__}")
 
+        active_call_ids = {
+            item["call_id"] for item in input_items if item.get("type") == "function_call"
+        }
+        self._reasoning_by_call = {
+            call_id: items
+            for call_id, items in self._reasoning_by_call.items()
+            if call_id in active_call_ids
+        }
+
         params: dict[str, Any] = {
             "model": self._model,
             "input": input_items,

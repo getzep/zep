@@ -46,6 +46,18 @@ def response(output: list[dict[str, Any]], response_id: str) -> Response:
     )
 
 
+def test_a_new_conversation_drops_unreferenced_reasoning() -> None:
+    llm = ReasoningReplayOpenAICompletion(api_key="test-openai-key")
+    llm._reasoning_by_call["old-call"] = [{"type": "reasoning", "id": "old-reasoning"}]
+
+    params = llm._prepare_responses_params(
+        messages=[{"role": "user", "content": "New conversation"}]
+    )
+
+    assert llm._reasoning_by_call == {}
+    assert params["input"] == [{"role": "user", "content": "New conversation"}]
+
+
 def test_crew_kickoff_replays_reasoning_for_tool_rounds(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")

@@ -23,6 +23,20 @@ def response(output: list[dict[str, object]]) -> SimpleNamespace:
     )
 
 
+def test_a_new_conversation_drops_unreferenced_reasoning() -> None:
+    mock_client = MagicMock()
+    mock_client.responses.create.return_value = response([])
+    client = OpenAIResponsesModelClient({}, client=mock_client)
+    client._reasoning_by_call["old-call"] = [{"type": "reasoning", "id": "old-reasoning"}]
+
+    client.create({"messages": [{"role": "user", "content": "New conversation"}]})
+
+    assert client._reasoning_by_call == {}
+    assert mock_client.responses.create.call_args.kwargs["input"] == [
+        {"role": "user", "content": "New conversation"}
+    ]
+
+
 def test_assistant_tool_round_trip_uses_stateless_responses(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
