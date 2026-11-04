@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Codex, type ThreadEvent } from "@openai/codex-sdk";
 import type { Case } from "../src/banking.js";
-import { SYSTEM, userPrompt } from "../src/prompts.js";
+import { skillCatalog, SYSTEM, userPrompt } from "../src/prompts.js";
 import { BankingTools, toolSchemas } from "../src/tools.js";
 import type { EpisodeResult } from "../src/episode.js";
 import type { TraceRecorder } from "../src/zep-skills.js";
@@ -36,6 +36,10 @@ export function createCodexBankingMcpConfig() {
     default_tools_approval_mode: "approve",
     enabled_tools: Object.keys(toolSchemas),
   };
+}
+
+export function codexDeveloperInstructions(skills: Record<string, unknown>[]) {
+  return SYSTEM.replace("{catalog}", JSON.stringify(skillCatalog(skills)));
 }
 
 export function mapCodexEvent(event: ThreadEvent): CodexMapping | null {
@@ -92,7 +96,7 @@ export async function runEpisode(
       },
       config: {
         ...createCodexProviderConfig(),
-        developer_instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)),
+        developer_instructions: codexDeveloperInstructions(skills),
         mcp_servers: {
           banking: {
             ...createCodexBankingMcpConfig(),
