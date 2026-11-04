@@ -1,0 +1,29 @@
+[project]
+name = "agent-skills-frameworks"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "httpx>=0.28,<0.29",
+    "langchain==1.4.8",
+    "langchain-anthropic==1.7.9",
+    "langchain-openai==1.7.3",
+    "langgraph==1.2.19",
+    "pydantic>=2.11,<3",
+    "zep-cloud==4.1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "ruff>=0.9,<1", "pyright>=1.1.390"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.pyright]
+include = ["banking.py", "langgraph_agent.py", "prompts.py", "run.py", "tools.py", "zep_skills.py", "tests"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
