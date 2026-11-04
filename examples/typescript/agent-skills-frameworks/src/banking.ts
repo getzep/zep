@@ -130,6 +130,23 @@ const cents = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_HALF_UP
 const money = (value: Decimal) => value.toFixed(2);
 const decimalJson = (value: Decimal) => value.isZero() ? "0" : value.decimalPlaces() < 2 ? value.toFixed(2) : value.toString();
 
+function allocationRank(total: Decimal, quotes: Quote[]): Decimal[] {
+  return [total, ...quotes.flatMap((quote) => [
+    D(quote.card_bonus_percent),
+    D(quote.checking_bonus_percent),
+  ])];
+}
+
+export function compareRank(a: readonly Decimal[], b: readonly Decimal[]): -1 | 0 | 1 {
+  for (let index = 0; index < Math.max(a.length, b.length); index++) {
+    if (index >= a.length) return -1;
+    if (index >= b.length) return 1;
+    if (a[index].lt(b[index])) return -1;
+    if (a[index].gt(b[index])) return 1;
+  }
+  return 0;
+}
+
 class PythonRandom {
   private readonly mt = new Uint32Array(624);
   private index = 624;
@@ -324,6 +341,7 @@ export function comparePackages(caseData: Case, packages: Selection[]): Allocati
     return { permitted: false, reason: "Submit at least one package for each savings account." };
   }
   let best: Allocation | null = null;
+  let bestRank: Decimal[] | null = null;
   const chosen: Selection[] = [];
   const visit = (index: number) => {
     if (index === accounts.length) {
@@ -333,9 +351,11 @@ export function comparePackages(caseData: Case, packages: Selection[]): Allocati
       const quotes = chosen.map((item) => quoteValues(caseData, item)).filter((item): item is Quote => item.permitted);
       const total = quotes.reduce((sum, item) => sum.plus(item.annual_bonus), D(0));
       const candidate: Allocation = { permitted: true, quotes, total_annual_bonus: decimalJson(total) };
-      const rank = total.toNumber() * 1e6 + quotes.reduce((sum, item) => sum + Number(item.card_bonus_percent) * 100 + Number(item.checking_bonus_percent), 0) / 1e9;
-      const oldRank = best ? Number(best.total_annual_bonus) * 1e6 + best.quotes.reduce((sum, item) => sum + Number(item.card_bonus_percent) * 100 + Number(item.checking_bonus_percent), 0) / 1e9 : -Infinity;
-      if (!best || rank > oldRank) best = candidate;
+      const rank = allocationRank(total, quotes);
+      if (!bestRank || compareRank(rank, bestRank) > 0) {
+        best = candidate;
+        bestRank = rank;
+      }
       return;
     }
     const choices = options.get(accounts[index].account_id)!;
@@ -363,8 +383,7 @@ export function expectedDatabase(caseData: Case): Database {
     options.push(choices);
   }
   let bestSelections: Selection[] = [];
-  let bestValue = -Infinity;
-  let bestTie: number[] = [];
+  let bestRank: Decimal[] | null = null;
   const selected: Selection[] = [];
   const visit = (index: number) => {
     if (index === options.length) {
@@ -372,11 +391,10 @@ export function expectedDatabase(caseData: Case): Database {
       const cards = selected.map((item) => item.card_id).filter(Boolean);
       if (new Set(checks).size !== checks.length || new Set(cards).size !== cards.length) return;
       const quotes = selected.map((item) => quoteValues(caseData, item)).filter((item): item is Quote => item.permitted);
-      const value = quotes.reduce((sum, quote) => sum.plus(D(quote.annual_bonus)), D(0)).toNumber();
-      const tie = quotes.flatMap((quote) => [Number(quote.card_bonus_percent), Number(quote.checking_bonus_percent)]);
-      if (value > bestValue || (value === bestValue && tie.some((n, i) => n !== bestTie[i] && n > bestTie[i]))) {
-        bestValue = value;
-        bestTie = tie;
+      const total = quotes.reduce((sum, quote) => sum.plus(D(quote.annual_bonus)), D(0));
+      const rank = allocationRank(total, quotes);
+      if (!bestRank || compareRank(rank, bestRank) > 0) {
+        bestRank = rank;
         bestSelections = [...selected];
       }
       return;
