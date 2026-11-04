@@ -14,7 +14,8 @@ import os
 import sys
 import time
 
-from crewai import LLM, Agent, Crew, Process, Task
+from crewai import Agent, Crew, Process, Task
+from responses_llm import ReasoningReplayOpenAICompletion
 from zep_cloud.client import Zep
 
 from zep_crewai import ZepStorage, create_search_tool
@@ -121,12 +122,7 @@ def main():
         what you know about the user before answering.""",
         tools=[search_tool],
         verbose=True,
-        llm=LLM(
-            model="gpt-6-luna",
-            api="responses",
-            reasoning_effort="low",
-            store=False,
-        ),
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     # Create a simple task

@@ -50,7 +50,7 @@ at run time.
 import os
 from zep_cloud.client import Zep
 from zep_crewai import ZepUserStorage, create_search_tool
-from crewai import Agent, Crew, LLM, Task
+from crewai import Agent, Crew, Task
 
 # Initialize Zep client
 zep_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
@@ -108,6 +108,7 @@ crew = Crew(agents=[agent], tasks=[...])
 ### Tool-Equipped Agents
 
 ```python
+from responses_llm import ReasoningReplayOpenAICompletion
 from zep_crewai import create_search_tool, create_add_data_tool
 
 # Both tools are bound to one graph. For a user graph, pass the user's graph_uuid.
@@ -119,17 +120,16 @@ agent = Agent(
     role="Knowledge Assistant",
     goal="Manage and retrieve information efficiently",
     tools=[search_tool, add_tool],
-    llm=LLM(
-        model="gpt-6-luna",
-        api="responses",
-        reasoning_effort="low",
-        store=False,
-    ),
+    llm=ReasoningReplayOpenAICompletion(),
 )
 ```
 
-Tool calls use the Responses API with low reasoning. The examples set `store=False`.
-CrewAI does not send reasoning items back to the model in a tool loop.
+Tool calls use the Responses API with low reasoning. The examples use
+`examples/responses_llm.py`, which sends the encrypted reasoning items back
+before their function calls. CrewAI's `auto_chain_reasoning` option keeps only
+the last reasoning items and puts them at the start of the input, so the
+examples extend it.
+Copy `examples/responses_llm.py` into your project before you use the class.
 
 ## Features
 

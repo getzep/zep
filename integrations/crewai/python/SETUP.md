@@ -51,8 +51,12 @@ export ZEP_API_URL="https://api.development.getzep.com"
 export OPENAI_MODEL="gpt-6-luna"
 ```
 
-Tool calls use the Responses API with low reasoning. The examples set `store=False`.
-CrewAI does not send reasoning items back to the model in a tool loop.
+Tool calls use the Responses API with low reasoning. The examples use
+`examples/responses_llm.py`, which sends the encrypted reasoning items back
+before their function calls. CrewAI's `auto_chain_reasoning` option keeps only
+the last reasoning items and puts them at the start of the input, so the
+examples extend it.
+Copy `examples/responses_llm.py` into your project before you use the class.
 
 To call a non-default Zep API, pass the base URL when you create the client.
 The `base_url` value must end in `/api/v4`:
