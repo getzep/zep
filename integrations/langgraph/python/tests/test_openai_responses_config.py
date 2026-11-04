@@ -10,7 +10,9 @@ import pytest
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
-from openai._base_client import httpx2
+from openai import _base_client
+
+httpx2 = getattr(_base_client, "httpx2", getattr(_base_client, "_httpx2", httpx))
 
 
 def load_example(monkeypatch: pytest.MonkeyPatch) -> Any:
