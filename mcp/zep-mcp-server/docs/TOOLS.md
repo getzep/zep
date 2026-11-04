@@ -497,4 +497,3 @@ Use this information for temporal reasoning and context.
 
 - [Zep Cloud Documentation](https://help.getzep.com/)
 - [GitHub Issues](https://github.com/getzep/zep/issues)
-- [Discord Community](https://discord.gg/W8Kw6bsgXQ)
