@@ -124,13 +124,12 @@ agent = Agent(
         api="responses",
         reasoning_effort="low",
         store=False,
-        include=["reasoning.encrypted_content"],
     ),
 )
 ```
 
-Tool calls use the Responses API with low reasoning. The examples set
-`store=False` and include encrypted reasoning for stateless requests.
+Tool calls use the Responses API with low reasoning. The examples set `store=False`.
+CrewAI does not send reasoning items back to the model in a tool loop.
 
 ## Features
 

@@ -93,7 +93,6 @@ def test_crew_kickoff_uses_stateless_responses_for_tools(monkeypatch) -> None:
             api="responses",
             reasoning_effort="low",
             store=False,
-            include=["reasoning.encrypted_content"],
             api_key="sk-test",
             base_url="http://127.0.0.1:9/v1",
         ),
@@ -117,7 +116,7 @@ def test_crew_kickoff_uses_stateless_responses_for_tools(monkeypatch) -> None:
         assert params["model"] == "gpt-6-luna"
         assert params["reasoning"] == {"effort": "low"}
         assert params["store"] is False
-        assert params["include"] == ["reasoning.encrypted_content"]
+        assert "include" not in params
         assert "previous_response_id" not in params
         assert "temperature" not in params
         assert "top_p" not in params
@@ -132,3 +131,5 @@ def test_crew_kickoff_uses_stateless_responses_for_tools(monkeypatch) -> None:
         "call_id": "call_1",
         "output": "Found Zep",
     }
+    assert not any(item.get("type") == "reasoning" for item in second["input"])
+    assert not any(item.get("type") == "function_call" and "id" in item for item in second["input"])

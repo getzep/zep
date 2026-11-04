@@ -57,7 +57,7 @@ class OpenAIResponsesChatCompletionClient(ChatCompletionClient):
                     input_items.append({"role": "assistant", "content": message.content})
                 else:
                     if message.content:
-                        input_items.extend(self._reasoning_by_call.pop(message.content[0].id, []))
+                        input_items.extend(self._reasoning_by_call.get(message.content[0].id, []))
                     input_items.extend(
                         {
                             "type": "function_call",

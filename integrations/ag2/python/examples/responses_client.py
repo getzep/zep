@@ -8,7 +8,7 @@ from openai import OpenAI
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessage,
-    ChatCompletionMessageFunctionToolCall,
+    ChatCompletionMessageToolCall,
 )
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message_tool_call import Function
@@ -37,20 +37,14 @@ class OpenAIResponsesModelClient(ModelClient):
             if role == "system":
                 if content:
                     instructions.append(str(content))
-            elif role in ("user", "assistant") and content:
-                tool_calls = message.get("tool_calls") or []
-                if role == "assistant" and tool_calls:
-                    input_items.append({"role": "assistant", "content": content})
-                    if tool_calls:
-                        input_items.extend(self._reasoning_by_call.pop(tool_calls[0]["id"], []))
-                    input_items.extend(self._function_call(call) for call in tool_calls)
-                else:
-                    input_items.append({"role": role, "content": content})
             elif role == "assistant" and message.get("tool_calls"):
                 tool_calls = message["tool_calls"]
-                if tool_calls:
-                    input_items.extend(self._reasoning_by_call.pop(tool_calls[0]["id"], []))
+                input_items.extend(self._reasoning_by_call.get(tool_calls[0]["id"], []))
+                if content:
+                    input_items.append({"role": "assistant", "content": content})
                 input_items.extend(self._function_call(call) for call in tool_calls)
+            elif role in ("user", "assistant") and content:
+                input_items.append({"role": role, "content": content})
             elif role == "tool":
                 input_items.append(
                     {
@@ -84,7 +78,7 @@ class OpenAIResponsesModelClient(ModelClient):
         ]
         message_text = self._output_text(output)
         tool_calls = [
-            ChatCompletionMessageFunctionToolCall(
+            ChatCompletionMessageToolCall(
                 id=str(self._get(call, "call_id", "")),
                 type="function",
                 function=Function(

@@ -210,7 +210,6 @@ def main() -> None:
                 api="responses",
                 reasoning_effort="low",
                 store=False,
-                include=["reasoning.encrypted_content"],
             ),
             verbose=False,
         )
@@ -299,7 +298,6 @@ def test_integration_full_lifecycle() -> None:
                 api="responses",
                 reasoning_effort="low",
                 store=False,
-                include=["reasoning.encrypted_content"],
             ),
             verbose=False,
         )
