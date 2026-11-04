@@ -222,7 +222,11 @@ def create_zep_search_tool(
         from zep_pydantic_ai import ZepDeps, create_zep_search_tool
 
         agent = Agent(
-            "openai:gpt-4o-mini",
+            "openai-responses:gpt-6-luna",
+            model_settings={
+                "openai_reasoning_effort": "low",
+                "openai_send_reasoning_ids": True,
+            },
             deps_type=ZepDeps,
             tools=[create_zep_search_tool()],
         )

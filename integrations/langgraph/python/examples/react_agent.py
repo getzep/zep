@@ -60,12 +60,21 @@ if not OPENAI_API_KEY:
 FIRST_NAME = "Alice"
 LAST_NAME = "Smith"
 EMAIL = f"alice.smith+{uuid4().hex[:8]}@example.com"
+OPENAI_MODEL = "gpt-6-luna"
 
 BASE_INSTRUCTIONS = (
     "You are a helpful assistant with long-term memory. When memory context is "
     "provided, use it to give personalised, memory-aware answers. You may also "
     "call the search_memory tool to look up specific details on demand."
 )
+
+
+def build_model() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=OPENAI_MODEL,
+        use_responses_api=True,
+        reasoning={"effort": "low"},
+    )
 
 
 async def wait_for_graph_searchable(
@@ -116,8 +125,7 @@ async def main() -> None:
     # --- On-demand graph search over the user's personal graph. ---
     search_tool = create_graph_search_tool(zep, graph_uuid=user_graph_uuid, scope="edges")
 
-    # gpt-5 family models are reasoning models and reject an explicit ``temperature``; omit it.
-    model = ChatOpenAI(model="gpt-5-mini")
+    model = build_model()
     agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
 
     async def chat(user_text: str) -> str:
@@ -131,7 +139,7 @@ async def main() -> None:
         )
         result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
         reply = result["messages"][-1]
-        reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
+        reply_text = reply.text
 
         await persist_messages(
             zep, thread_uuid=thread.uuid_, messages=[AIMessage(content=reply_text)]

@@ -42,14 +42,14 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 if not ZEP_API_KEY:
     pytest.skip("ZEP_API_KEY required for integration tests", allow_module_level=True)
 
 from strands import Agent  # noqa: E402
 from strands.memory import MemoryManager  # noqa: E402
-from strands.models.openai import OpenAIModel  # noqa: E402
+from strands.models.openai_responses import OpenAIResponsesModel  # noqa: E402
 from strands.types.content import Message  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
@@ -143,7 +143,11 @@ async def build_agent(
         search_pinned_params={"scope": "auto"},
     )
     return Agent(
-        model=OpenAIModel(client_args={"api_key": OPENAI_API_KEY}, model_id=OPENAI_MODEL),
+        model=OpenAIResponsesModel(
+            client_args={"api_key": OPENAI_API_KEY},
+            model_id=OPENAI_MODEL,
+            params={"reasoning": {"effort": "low"}},
+        ),
         system_prompt=(
             "You are a helpful assistant with access to long-term memory. "
             "When memory context is provided, use it to give personalised, "

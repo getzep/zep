@@ -93,5 +93,5 @@ client.
   belongs to the intended project.
 - **`PydanticAIDeprecationWarning` about `openai:`** — this is a forward-compat
   notice from Pydantic AI itself, not from this integration. The example runs
-  correctly; pin a fully-qualified model string (e.g. `openai-chat:gpt-4o-mini`)
+  correctly; pin a fully-qualified model string (e.g. `openai-responses:gpt-6-luna`)
   to silence it.

@@ -35,7 +35,7 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -45,6 +45,7 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
 
 from pydantic_ai import Agent  # noqa: E402
 from pydantic_ai.capabilities import ProcessHistory  # noqa: E402
+from pydantic_ai.models.openai import OpenAIResponsesModelSettings  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
 from zep_pydantic_ai import (  # noqa: E402
@@ -108,7 +109,11 @@ async def wait_for_episodes_processed(
 def build_agent() -> Agent:
     """Build the Pydantic AI agent; per-user identity is supplied via ZepDeps."""
     return Agent(
-        f"openai:{OPENAI_MODEL}",
+        f"openai-responses:{OPENAI_MODEL}",
+        model_settings=OpenAIResponsesModelSettings(
+            openai_reasoning_effort="low",
+            openai_send_reasoning_ids=True,
+        ),
         deps_type=ZepDeps,
         capabilities=[ProcessHistory(zep_history_processor)],
         tools=[create_zep_search_tool()],
