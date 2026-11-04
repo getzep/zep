@@ -54,7 +54,41 @@ async def test_assistant_tool_round_trip_uses_stateless_responses(
                 [
                     {
                         "type": "message",
-                        "content": [{"type": "output_text", "text": "The lookup returned Zep."}],
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "The lookup found Zep.",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            response(
+                [
+                    {
+                        "type": "reasoning",
+                        "id": "rs_2",
+                        "summary": [],
+                        "encrypted_content": "encrypted-state-2",
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call_2",
+                        "name": "lookup",
+                        "arguments": '{"query":"memory"}',
+                    },
+                ]
+            ),
+            response(
+                [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "The lookup found memory.",
+                            }
+                        ],
                     }
                 ]
             ),
@@ -73,12 +107,16 @@ async def test_assistant_tool_round_trip_uses_stateless_responses(
         reflect_on_tool_use=True,
     )
 
-    result = await agent.run(task="Use lookup to search for Zep.")
+    result = await agent.run(task="Look up Zep.")
+    follow_up = await agent.run(task="Look up memory as a second query.")
 
-    assert str(result.messages[-1].content) == "The lookup returned Zep."
-    assert mock_client.responses.create.await_count == 2
-    first, second = [call.kwargs for call in mock_client.responses.create.await_args_list]
-    for args in (first, second):
+    assert str(result.messages[-1].content) == "The lookup found Zep."
+    assert str(follow_up.messages[-1].content) == "The lookup found memory."
+    assert mock_client.responses.create.await_count == 4
+    first, second, third, fourth = [
+        call.kwargs for call in mock_client.responses.create.await_args_list
+    ]
+    for args in (first, second, third, fourth):
         assert args["model"] == "gpt-6-luna"
         assert args["reasoning"] == {"effort": "low"}
         assert args["store"] is False
@@ -86,21 +124,58 @@ async def test_assistant_tool_round_trip_uses_stateless_responses(
         assert "previous_response_id" not in args
         assert "temperature" not in args
         assert "top_p" not in args
-    second_input = second["input"]
-    call_index = next(
-        i for i, item in enumerate(second_input) if item.get("type") == "function_call"
-    )
-    assert second_input[call_index - 1] == {
-        "type": "reasoning",
-        "id": "rs_1",
-        "summary": [],
-        "encrypted_content": "encrypted-state",
+
+    reasoning_by_call = {
+        "call_1": {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [],
+            "encrypted_content": "encrypted-state",
+        },
+        "call_2": {
+            "type": "reasoning",
+            "id": "rs_2",
+            "summary": [],
+            "encrypted_content": "encrypted-state-2",
+        },
     }
+
+    def assert_reasoning_replayed(input_items: list[dict], call_id: str) -> int:
+        call_index = next(
+            i
+            for i, item in enumerate(input_items)
+            if item.get("type") == "function_call" and item.get("call_id") == call_id
+        )
+        assert input_items[call_index - 1] == reasoning_by_call[call_id]
+        return call_index
+
+    second_input = second["input"]
+    call_index = assert_reasoning_replayed(second_input, "call_1")
     assert second_input[call_index]["call_id"] == "call_1"
     assert second_input[call_index + 1] == {
         "type": "function_call_output",
         "call_id": "call_1",
         "output": "Found Zep",
+    }
+    third_input = third["input"]
+    first_call_index = assert_reasoning_replayed(third_input, "call_1")
+    assert third_input[first_call_index + 1] == {
+        "type": "function_call_output",
+        "call_id": "call_1",
+        "output": "Found Zep",
+    }
+    assert any(
+        item.get("role") == "user" and item.get("content") == "Look up memory as a second query."
+        for item in third_input
+    )
+    fourth_input = fourth["input"]
+    first_call_index = assert_reasoning_replayed(fourth_input, "call_1")
+    assert fourth_input[first_call_index + 1]["call_id"] == "call_1"
+    second_call_index = assert_reasoning_replayed(fourth_input, "call_2")
+    assert fourth_input[second_call_index + 1] == {
+        "type": "function_call_output",
+        "call_id": "call_2",
+        "output": "Found memory",
     }
     assert first["tools"] == [
         {

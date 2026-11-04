@@ -51,8 +51,8 @@ export ZEP_API_URL="https://api.development.getzep.com"
 export OPENAI_MODEL="gpt-6-luna"
 ```
 
-Tool calls use the Responses API with low reasoning. The examples set
-`store=False` and include encrypted reasoning for stateless requests.
+Tool calls use the Responses API with low reasoning. The examples set `store=False`.
+CrewAI does not send reasoning items back to the model in a tool loop.
 
 To call a non-default Zep API, pass the base URL when you create the client.
 The `base_url` value must end in `/api/v4`:

@@ -157,7 +157,6 @@ def main():
             api="responses",
             reasoning_effort="low",
             store=False,
-            include=["reasoning.encrypted_content"],
         ),
     )
 
@@ -175,7 +174,6 @@ def main():
             api="responses",
             reasoning_effort="low",
             store=False,
-            include=["reasoning.encrypted_content"],
         ),
     )
 
