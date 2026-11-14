@@ -258,3 +258,32 @@ def test_invalid_chunk_size_rejected(tmp_path, chunk_chars):
     path = write(tmp_path, "meeting.txt", "Avery Brown: Review started.\n")
     with pytest.raises(ConfigurationError, match="chunk_chars"):
         TranscriptLoader(path, chunk_chars=chunk_chars)
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("call_2024-02-30.txt", "Alice: Hello there\n"),
+        ("call_0000-01-01.txt", "Alice: Hello there\n"),
+        ("notes.txt", "DATE: 2024-13-01\nAlice: Hello there\n"),
+    ],
+)
+def test_impossible_date_leaves_created_at_unset_instead_of_raising(tmp_path, name, content):
+    path = write(tmp_path, name, content)
+    loader = TranscriptLoader(path, default_start_time="09:00:00+00:00")
+    [episode] = loader.load()
+    assert episode.created_at is None
+    assert any("not a valid date" in warning for warning in loader.warnings)
+
+
+@pytest.mark.parametrize("hours", ["99999999999", "99999999", "9" * 5000])
+def test_out_of_range_vtt_offset_leaves_created_at_unset_instead_of_raising(tmp_path, hours):
+    path = write(
+        tmp_path,
+        "call.vtt",
+        f"WEBVTT\n\n{hours}:00:00.000 --> {hours}:00:05.000\n<v Alice>Hello there</v>\n",
+    )
+    loader = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00+00:00")
+    [episode] = loader.load()
+    assert episode.created_at is None
+    assert any("out of range" in warning for warning in loader.warnings)

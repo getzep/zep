@@ -101,7 +101,13 @@ class TranscriptLoader:
         for index, chunk in enumerate(chunks, start=1):
             created_at = None
             if start is not None:
-                created_at = (start + (chunk[0].offset or timedelta())).isoformat()
+                try:
+                    created_at = (start + (chunk[0].offset or timedelta())).isoformat()
+                except OverflowError:
+                    self.warnings.append(
+                        f"{file.name}: chunk {index} timestamp is out of range; "
+                        "created_at left unset."
+                    )
             yield Episode(
                 data="\n".join(f"{turn.speaker}: {turn.text}" for turn in chunk),
                 data_type="text",
@@ -182,12 +188,17 @@ class TranscriptLoader:
                 continue
             cue = _VTT_CUE.match(line)
             if cue:
-                offset = timedelta(
-                    hours=int(cue.group("hours") or 0),
-                    minutes=int(cue.group("minutes")),
-                    seconds=int(cue.group("seconds")),
-                    milliseconds=int(cue.group("millis")),
-                )
+                try:
+                    offset = timedelta(
+                        hours=int(cue.group("hours") or 0),
+                        minutes=int(cue.group("minutes")),
+                        seconds=int(cue.group("seconds")),
+                        milliseconds=int(cue.group("millis")),
+                    )
+                except (OverflowError, ValueError):
+                    # Too large for timedelta; no start time can absorb it, so
+                    # _load_file leaves created_at unset for this chunk.
+                    offset = timedelta.max
                 continue
             if is_vtt and self._is_vtt_identifier(lines, index):
                 continue
@@ -238,7 +249,13 @@ class TranscriptLoader:
                 f"{file.name}: date found but no start time supplied; created_at left unset."
             )
             return None
-        meeting_date = datetime.fromisoformat("-".join(date_match.groups())).date()
+        try:
+            meeting_date = datetime.fromisoformat("-".join(date_match.groups())).date()
+        except ValueError:
+            self.warnings.append(
+                f"{file.name}: {date_match.group(0)!r} is not a valid date; created_at left unset."
+            )
+            return None
         start = datetime.combine(meeting_date, self._default_start)
         self.warnings.append(
             f"{file.name}: assumed meeting start {start.isoformat()} from default_start_time."
