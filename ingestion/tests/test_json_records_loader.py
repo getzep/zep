@@ -70,6 +70,18 @@ class TestFormats:
         assert len(episodes) == 2
         assert json.loads(episodes[0].data)["value"] == value
 
+    def test_jsonl_skips_blank_lines_and_trailing_newline(self, tmp_path):
+        path = tmp_path / "records.jsonl"
+        path.write_text(
+            '{"id": "first"}\n\n   \n{"id": "second"}\n',
+            encoding="utf-8",
+        )
+
+        episodes = list(JsonRecordsLoader(path).load())
+
+        assert len(episodes) == 2
+        assert [json.loads(episode.data)["id"] for episode in episodes] == ["first", "second"]
+
     def test_json_suffix_holding_jsonl_falls_back(self, tmp_path):
         """JSONL exports are routinely saved as .json. The shared row reader used by
         the fact-triple and thread paths already accepts that shape."""

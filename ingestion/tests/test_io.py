@@ -36,6 +36,16 @@ def test_jsonl_with_crlf_line_endings_returns_both_rows(tmp_path):
     assert load_rows(path) == rows
 
 
+def test_jsonl_skips_blank_lines_and_trailing_newline(tmp_path):
+    path = tmp_path / "messages.jsonl"
+    path.write_text(
+        '{"id": "first"}\n\n   \n{"id": "second"}\n',
+        encoding="utf-8",
+    )
+
+    assert load_rows(path) == [{"id": "first"}, {"id": "second"}]
+
+
 @pytest.mark.parametrize("content", ["", "   \n\n  "])
 def test_empty_file_is_rejected_rather_than_ingesting_nothing(tmp_path, content):
     """An empty file parses as zero JSONL rows, so without this the run reports
