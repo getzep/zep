@@ -3,6 +3,15 @@
 All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org).
 
+## 0.4.1
+
+### Fixed
+
+- **JSONL files with a raw U+2028, U+2029, or U+0085 character in a value load
+  correctly.** The JSONL readers split lines only on `\n`. Before this fix,
+  `ingest_json_records` and the node, triple, and thread message loaders failed
+  on the whole file. Thanks to Jeetu SK for the report.
+
 ## 0.4.0
 
 ### Breaking

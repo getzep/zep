@@ -56,6 +56,18 @@ class TestFormats:
         assert all(e.data_type == "json" for e in episodes)
         assert json.loads(episodes[0].data)["sku"] == "P1"
 
+    @pytest.mark.parametrize("character", ["\u2028", "\u2029", "\u0085"])
+    def test_jsonl_preserves_unicode_line_separator_characters(self, tmp_path, character):
+        value = f"before{character}after"
+        rows = [{"id": "first", "value": value}, {"id": "second", "value": "other"}]
+        path = tmp_path / "records.jsonl"
+        path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
+
+        episodes = list(JsonRecordsLoader(path).load())
+
+        assert len(episodes) == 2
+        assert json.loads(episodes[0].data)["value"] == value
+
     def test_json_suffix_holding_jsonl_falls_back(self, tmp_path):
         """JSONL exports are routinely saved as .json. The shared row reader used by
         the fact-triple and thread paths already accepts that shape."""

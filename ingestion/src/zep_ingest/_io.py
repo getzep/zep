@@ -92,7 +92,7 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
         parsed = json.loads(text)
     except json.JSONDecodeError:
         try:
-            return [json.loads(line) for line in text.splitlines() if line.strip()]
+            return [json.loads(line) for line in text.split("\n") if line.strip()]
         except json.JSONDecodeError as error:
             raise ConfigurationError(
                 f"Could not parse {path.name} as JSON/JSONL: {error}"
