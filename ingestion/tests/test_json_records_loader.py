@@ -61,7 +61,9 @@ class TestFormats:
         value = f"before{character}after"
         rows = [{"id": "first", "value": value}, {"id": "second", "value": "other"}]
         path = tmp_path / "records.jsonl"
-        path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
+        path.write_text(
+            "\n".join(json.dumps(row, ensure_ascii=False) for row in rows), encoding="utf-8"
+        )
 
         episodes = list(JsonRecordsLoader(path).load())
 

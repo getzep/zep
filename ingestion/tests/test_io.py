@@ -21,7 +21,9 @@ def test_jsonl_preserves_unicode_line_separator_characters(tmp_path, character):
     value = f"before{character}after"
     rows = [{"id": "first", "value": value}, {"id": "second", "value": "other"}]
     path = tmp_path / "messages.jsonl"
-    path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows))
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows), encoding="utf-8"
+    )
 
     assert load_rows(path) == rows
 
@@ -29,7 +31,7 @@ def test_jsonl_preserves_unicode_line_separator_characters(tmp_path, character):
 def test_jsonl_with_crlf_line_endings_returns_both_rows(tmp_path):
     rows = [{"id": "first"}, {"id": "second"}]
     path = tmp_path / "messages.jsonl"
-    path.write_text("\r\n".join(json.dumps(row) for row in rows))
+    path.write_text("\r\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
     assert load_rows(path) == rows
 
