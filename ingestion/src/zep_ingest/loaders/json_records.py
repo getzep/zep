@@ -137,7 +137,7 @@ class JsonRecordsLoader:
 
     @staticmethod
     def _read_lines(file: Path) -> Iterator[Any]:
-        for line in file.read_text(encoding="utf-8").splitlines():
+        for line in file.read_text(encoding="utf-8").split("\n"):
             if line.strip():
                 yield json.loads(line)
 
